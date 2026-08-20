@@ -151,6 +151,7 @@
   <button class="tab active" data-tab="catalog" onclick="switchTab('catalog')">🌸 الكتالوج</button>
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
+  <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
 </div>
 
 <!-- CATALOG -->
@@ -216,6 +217,17 @@
   <div style="padding:0 24px 10px"><h2 style="font-size:20px;color:var(--accent)">منتجاتي</h2>
     <p style="color:var(--ink-soft);font-size:14px">الأصناف التي تورّدها لقدح، مع سعر توريدك.</p></div>
   <div class="grid" id="myProducts" style="padding-top:0"></div>
+</section>
+
+<!-- USERS MANAGEMENT (المدير فقط) -->
+<section id="tab-users" class="hidden">
+  <div style="padding:16px 24px 6px"><h2 style="font-size:20px;color:var(--accent)">إدارة المستخدمين والأدوار</h2>
+    <p style="color:var(--ink-soft);font-size:14px">غيّر دور أي مستخدم مباشرة. لتحويل شخص إلى مورد، استخدم صندوق ربط الحساب في قسم الموردون.</p></div>
+  <div class="toolbar">
+    <div class="search"><input id="usrSearch" type="text" placeholder="ابحث بالبريد..." oninput="renderUsers()"></div>
+    <button class="btn btn-ghost" onclick="fetchUsers().then(renderUsers)">↻ تحديث</button>
+  </div>
+  <div class="tablewrap" id="usrTable"></div>
 </section>
 </div>
 
@@ -391,10 +403,12 @@ async function onSignedIn(){
   document.getElementById('btnBulk').classList.toggle('hidden',!can.bulk());
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
+  document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
   fillSelect(document.getElementById('p_cat'),false);
   await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts()]);
   if(can.seeCost())await fetchCosts();
+  if(ROLE==='admin')await fetchUsers();
   renderAll();subscribe();
 }
 
@@ -463,10 +477,52 @@ async function fetchCosts(){const {data}=await sb.from('product_costs').select('
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','suppliers','drivers'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
-  if(t==='catalog')renderProducts();else if(t==='suppliers')renderSuppliers();else renderDrivers();
+  ['catalog','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  if(t==='catalog')renderProducts();else if(t==='suppliers')renderSuppliers();
+  else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
 }
-function renderAll(){renderProducts();renderSuppliers();renderDrivers();}
+function renderAll(){renderProducts();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
+
+/* USERS MANAGEMENT (المدير) */
+let users=[];
+async function fetchUsers(){const {data}=await sb.from('profiles').select('id,email,role,created_at').order('role');users=data||[];}
+const ROLE_AR={admin:'مدير',editor:'مسؤول أسعار',viewer:'مشاهدة',supplier:'مورد'};
+function renderUsers(){
+  const box=document.getElementById('usrTable'); if(!box)return;
+  const q=document.getElementById('usrSearch').value.trim().toLowerCase();
+  const list=users.filter(u=>!q||(u.email||'').toLowerCase().includes(q));
+  if(!list.length){box.innerHTML='<div class="empty">لا مستخدمين.</div>';return;}
+  const adminCount=users.filter(u=>u.role==='admin').length;
+  box.innerHTML=`<table class="data"><thead><tr>
+    <th>البريد</th><th>الدور الحالي</th><th>تغيير الدور</th></tr></thead><tbody>
+    ${list.map(u=>{
+      const isMe=u.id===USERID;
+      const isSup=u.role==='supplier';
+      const opts=['admin','editor','viewer'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_AR[r]}</option>`).join('');
+      const supOpt=isSup?`<option value="supplier" selected>مورد</option>`:'';
+      return `<tr>
+        <td class="en"><b>${esc(u.email||'')}</b>${isMe?' <span class="chip">أنت</span>':''}</td>
+        <td><span class="chip">${ROLE_AR[u.role]||u.role}</span></td>
+        <td>${isSup
+          ? '<span style="color:var(--ink-soft);font-size:13px">يُدار من قسم الموردون</span>'
+          : `<select onchange="changeRole('${u.id}','${esc(u.email||"")}',this.value,${isMe},${adminCount})" ${(isMe&&adminCount<2)?'disabled title="آخر مدير"':''}>${supOpt}${opts}</select>`}
+        </td></tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+async function changeRole(id,email,newRole,isMe,adminCount){
+  const u=users.find(x=>x.id===id); if(!u||u.role===newRole)return;
+  if(isMe&&u.role==='admin'&&newRole!=='admin'&&adminCount<2){
+    toast('لا يمكن تنزيل آخر مدير'); renderUsers(); return;
+  }
+  let warn=`تغيير دور ${email} من "${ROLE_AR[u.role]}" إلى "${ROLE_AR[newRole]}"؟`;
+  if(isMe)warn='تنبيه: أنت تغيّر دور حسابك أنت.\n'+warn;
+  if(!confirm(warn)){renderUsers();return;}
+  const {error}=await sb.from('profiles').update({role:newRole}).eq('id',id);
+  if(error){toast(error.message);renderUsers();return;}
+  await fetchUsers();renderUsers();
+  toast('تم تغيير الدور'+(isMe?' — حدّث الصفحة لتطبيق صلاحياتك':''));
+}
 
 /* CATALOG */
 function renderProducts(){
