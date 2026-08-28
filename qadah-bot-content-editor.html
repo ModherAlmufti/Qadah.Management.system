@@ -136,7 +136,7 @@
 <header class="bar">
   <div class="brand">
     <div class="rose">🌹</div>
-    <div><h1>محرّر محتوى بوت قدّاح</h1><p>مربوط بنظام الإدارة — عدّل وشوف النتيجة مباشرة</p></div>
+    <div><h1>محرّر محتوى بوت قدّاح</h1><p>مرتبط بنظام الإدارة، عدّل وشاهد النتيجة مباشرة</p></div>
   </div>
   <div class="tools">
     <button class="btn ghost" id="btnImport">استيراد JSON</button>
@@ -179,8 +179,8 @@
           <input class="txt" id="sbTable" dir="ltr" placeholder="products"></label>
         <div class="add-row"><button class="btn" id="btnCatalog" style="background:var(--gold);color:#3a2c10">جلب الكتالوج من النظام</button></div>
 
-        <div class="conn-status" id="connStatus">غير متصل — التعديلات تنحفظ محلياً لحد ما تتصل بالنظام.</div>
-        <div class="hint">المفتاح العام (anon) آمن يُكتب هنا، محمي بصلاحيات الجدول (RLS). لا تكتب مفتاح <code>service_role</code> هنا أبداً.</div>
+        <div class="conn-status" id="connStatus">غير متصل. تُحفَظ التعديلات محلياً حتى تتصل بالنظام.</div>
+        <div class="hint">المفتاح العام (anon) آمن للكتابة هنا، ومحمي بصلاحيات الجدول (RLS). لا تكتب مفتاح <code>service_role</code> هنا أبداً.</div>
       </div>
     </section>
 
@@ -214,19 +214,19 @@ const DEFAULTS = {
     prompt:"أرسل رقم الخيار."
   },
   offers:{ text:"🎁 عروض هذا الأسبوع:\n• خصم 15% على باقات الورد الأحمر\n• توصيل مجاني للطلبات فوق 25 ألف دينار" },
-  track:{ text:"📦 اكتب رقم طلبك (مثال: QDH102549) حتى أعطيك حالته." },
+  track:{ text:"📦 اكتب رقم طلبك (مثال: QDH102549) لعرض حالته." },
   support:{ phone:"07XX XXX XXXX", email:"support@qadah.iq",
     message:"📞 للتواصل مع فريق قدّاح:\nالهاتف: {phone}\nالإيميل: {email}" },
   steps:{
     name:"👤 لمن نوصّل الباقة؟ اكتب اسم المستلم:",
     phone:"📱 اكتب رقم هاتف المستلم للتنسيق معه:",
     address:"📍 اكتب عنوان التوصيل بالتفصيل (المدينة، المنطقة، أقرب نقطة دالة):",
-    details:"📝 أي تفاصيل إضافية للطلب؟ اكتبها، أو اكتب تخطي:",
-    delivery:"🚗 متى تحب نوصّل الباقة؟ اختر الوقت:",
-    card:"💌 اكتب نص بطاقة الإهداء، أو اكتب تخطي إذا ما تريد بطاقة:"
+    details:"📝 أي تفاصيل إضافية للطلب؟ اكتبها، أو اكتب «تخطي»:",
+    delivery:"🚗 متى تريد أن نوصّل الباقة؟ اختر الوقت:",
+    card:"💌 اكتب نص بطاقة الإهداء، أو اكتب «تخطي» إن لم ترغب ببطاقة:"
   },
   deliveryTimes:["اليوم بعد الظهر","اليوم مساءً","غداً صباحاً","غداً مساءً"],
-  confirmation:{ text:"✅ تم استلام طلبك بنجاح!\nرقم الطلب: {order_id}\nوقت التوصيل: {delivery}\nراح نتواصل معك للتأكيد. شكراً لاختيارك قدّاح 🌹" }
+  confirmation:{ text:"✅ تم استلام طلبك بنجاح!\nرقم الطلب: {order_id}\nوقت التوصيل: {delivery}\nسنتواصل معك للتأكيد. شكراً لاختيارك قدّاح 🌹" }
 };
 
 const STORE_KEY="qadah_bot_content_v2";
@@ -266,12 +266,12 @@ async function save(){
     try{
       const { error } = await sbClient.from("bot_content").upsert({ id:1, content: state, updated_at:new Date().toISOString() });
       if(error) throw error;
-      toast("انحفظ بالنظام ✓ والبوت راح يشوفه فوراً");
-    }catch(e){ toast("تعذّر الحفظ بالنظام: "+(e.message||"تأكد من الجدول والصلاحيات")); }
+      toast("تم الحفظ في النظام ✓ وسيراه البوت فوراً");
+    }catch(e){ toast("تعذّر الحفظ في النظام: "+(e.message||"تأكد من الجدول والصلاحيات")); }
     return;
   }
   LS.set(STORE_KEY, state);
-  toast("انحفظ محلياً ✓ (مو متصل بالنظام)");
+  toast("تم الحفظ محلياً ✓ (غير متصل بالنظام)");
 }
 
 /* ---------- Supabase ---------- */
@@ -281,13 +281,13 @@ function loadSbLib(){
     const s=document.createElement("script");
     s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
     s.onload=()=>res(window.supabase);
-    s.onerror=()=>rej(new Error("تعذّر تحميل مكتبة الاتصال (تأكد من الانترنت)"));
+    s.onerror=()=>rej(new Error("تعذّر تحميل مكتبة الاتصال (تأكد من الإنترنت)"));
     document.head.appendChild(s);
   });
 }
 async function connect(){
   conf.url=el("sbUrl").value.trim(); conf.anon=el("sbAnon").value.trim();
-  if(!conf.url||!conf.anon){ toast("اكتب رابط ومفتاح Supabase"); return; }
+  if(!conf.url||!conf.anon){ toast("أدخل رابط ومفتاح Supabase"); return; }
   try{
     const lib=await loadSbLib();
     sbClient=lib.createClient(conf.url, conf.anon);
@@ -295,7 +295,7 @@ async function connect(){
     const { data:{ session } } = await sbClient.auth.getSession();
     sbUser = session?.user || null;
     updateAuthUI(); setConnState();
-    toast("اتصلنا بالنظام ✓");
+    toast("تم الاتصال بالنظام ✓");
     if(sbUser) await pullContent();
   }catch(e){ toast(e.message||"فشل الاتصال"); }
 }
@@ -307,30 +307,30 @@ function updateAuthUI(){
 }
 async function logout(){
   try{ if(sbClient) await sbClient.auth.signOut(); }catch(e){}
-  sbUser=null; updateAuthUI(); setConnState(); toast("سجّلنا خروجك — تكدر تسجّل دخول بحساب آخر");
+  sbUser=null; updateAuthUI(); setConnState(); toast("تم تسجيل الخروج، يمكنك الدخول بحساب آخر");
 }
 async function login(){
-  if(!sbClient){ toast("اتصل بالنظام أول"); return; }
+  if(!sbClient){ toast("اتصل بالنظام أولاً"); return; }
   const { data, error } = await sbClient.auth.signInWithPassword({ email:el("sbEmail").value.trim(), password:el("sbPass").value });
-  if(error){ toast("بيانات الدخول غلط"); return; }
+  if(error){ toast("بيانات الدخول غير صحيحة"); return; }
   sbUser=data.user; updateAuthUI(); setConnState();
-  toast("سجّلنا دخولك ✓"); await pullContent();
+  toast("تم تسجيل دخولك ✓"); await pullContent();
 }
 async function pullContent(){
   try{
     const { data, error } = await sbClient.from("bot_content").select("content").eq("id",1).maybeSingle();
-    if(!error && data && data.content){ state=merge(DEFAULTS,data.content); buildEditor(); renderPreview(); toast("جبنا المحتوى من النظام ✓"); }
+    if(!error && data && data.content){ state=merge(DEFAULTS,data.content); buildEditor(); renderPreview(); toast("تم جلب المحتوى من النظام ✓"); }
   }catch(e){}
 }
 async function fetchCatalog(){
-  if(!sbClient){ toast("اتصل بالنظام أول"); return; }
+  if(!sbClient){ toast("اتصل بالنظام أولاً"); return; }
   conf.table=el("sbTable").value.trim()||"products"; await saveConf();
   try{
     const { data, error } = await sbClient.from(conf.table).select("*").limit(200);
     if(error){ toast("تعذّر جلب الكتالوج: تأكد من اسم الجدول"); return; }
     catalog=(data||[]).map(mapProduct);
-    setTab("catalog"); toast("جبنا "+catalog.length+" منتج ✓");
-  }catch(e){ toast("خطأ بجلب الكتالوج"); }
+    setTab("catalog"); toast("تم جلب "+catalog.length+" منتج ✓");
+  }catch(e){ toast("خطأ في جلب الكتالوج"); }
 }
 function mapProduct(r){
   return {
@@ -341,11 +341,11 @@ function mapProduct(r){
 function setConnState(){
   const dot=el("connDot"), st=el("connStatus");
   if(sbClient && sbUser){ dot.classList.add("on"); st.classList.add("on");
-    st.textContent="متصل ومسجّل دخول ✓ — الحفظ يروح للنظام والبوت يقراه مباشرة."; }
+    st.textContent="متصل ومسجّل الدخول ✓. الحفظ يذهب إلى النظام والبوت يقرؤه مباشرة."; }
   else if(sbClient){ dot.classList.remove("on"); st.classList.remove("on");
-    st.textContent="متصل بدون تسجيل دخول — سجّل دخول المدير حتى تحفظ للنظام."; }
+    st.textContent="متصل بدون تسجيل دخول. سجّل دخول المدير لتحفظ في النظام."; }
   else { dot.classList.remove("on"); st.classList.remove("on");
-    st.textContent="غير متصل — التعديلات تنحفظ محلياً لحد ما تتصل بالنظام."; }
+    st.textContent="غير متصل. تُحفَظ التعديلات محلياً حتى تتصل بالنظام."; }
 }
 
 /* ============ editor ============ */
@@ -359,17 +359,17 @@ function buildEditor(){
     w.innerHTML=`<label class="fld"><span class="lab">خيارات القائمة (ترقّم تلقائياً 1، 2، 3…)</span></label>`;
     w.appendChild(menuItemsEditor()); b.appendChild(w);
     b.appendChild(inputField("سطر الطلب (تحت الخيارات)","welcome","prompt"));
-    b.appendChild(hint('الزبون يرد <b>برقم</b> الخيار. الأرقام تنكتب تلقائياً حسب الترتيب.'));
+    b.appendChild(hint('يرد العميل <b>برقم</b> الخيار. تُكتب الأرقام تلقائياً حسب الترتيب.'));
   }));
 
   root.appendChild(section("catalog","🌹","تصفح الورود (من نظام الإدارة)", b=>{
     const info=document.createElement("div"); info.className="hint";
-    info.innerHTML='منتجات "تصفح الورود" تجي من كتالوجك بنظام الإدارة، وتتعدّل هناك مو هنا. اضغط <b>جلب الكتالوج</b> بالأعلى حتى تظهر.';
+    info.innerHTML='منتجات «تصفح الورود» تأتي من الكتالوج في نظام الإدارة، وتُعدَّل هناك لا من هنا. اضغط «جلب الكتالوج» في الأعلى لعرضها.';
     b.appendChild(info);
     const list=document.createElement("div"); list.className="cat-list"; list.id="catList";
     if(catalog.length){ catalog.forEach(p=>{ const r=document.createElement("div"); r.className="row";
       r.innerHTML=`<b></b><span></span>`; r.children[0].textContent=p.name; r.children[1].textContent=(p.price!=null? p.price+" د.ع":"—"); list.appendChild(r); }); }
-    else { const e=document.createElement("div"); e.className="row"; e.innerHTML="<b>ما في منتجات محمّلة بعد</b><span></span>"; list.appendChild(e); }
+    else { const e=document.createElement("div"); e.className="row"; e.innerHTML="<b>لا توجد منتجات محمَّلة بعد</b><span></span>"; list.appendChild(e); }
     b.appendChild(list);
   }));
 
@@ -380,7 +380,7 @@ function buildEditor(){
     b.appendChild(inputField("هاتف الدعم","support","phone"));
     b.appendChild(inputField("إيميل الدعم","support","email"));
     b.appendChild(textField("رسالة الدعم","support","message"));
-    b.appendChild(hint('المتغيرات تنبدل تلقائياً: <code>{phone}</code> و <code>{email}</code>'));
+    b.appendChild(hint('تُستبدل المتغيرات تلقائياً: <code>{phone}</code> و <code>{email}</code>'));
   }));
 
   root.appendChild(section("steps","📝","رسائل خطوات الطلب", b=>{
@@ -394,13 +394,13 @@ function buildEditor(){
 
   root.appendChild(section("deliveryTimes","🚗","أوقات التوصيل", b=>{
     const w=document.createElement("div");
-    w.innerHTML=`<label class="fld"><span class="lab">الأوقات المتاحة للزبون</span></label>`;
+    w.innerHTML=`<label class="fld"><span class="lab">الأوقات المتاحة للعميل</span></label>`;
     w.appendChild(chipList()); b.appendChild(w);
   }));
 
   root.appendChild(section("confirmation","✅","رسالة تأكيد الطلب", b=>{
     b.appendChild(textField("نص التأكيد","confirmation","text"));
-    b.appendChild(hint('المتغيرات تنبدل تلقائياً: <code>{order_id}</code> و <code>{delivery}</code>'));
+    b.appendChild(hint('تُستبدل المتغيرات تلقائياً: <code>{order_id}</code> و <code>{delivery}</code>'));
   }));
 
   root.querySelector(".section").classList.add("open");
@@ -509,7 +509,7 @@ function renderPreview(){
         catalog.slice(0,8).forEach((p,i)=>{ s+=`${i+1}) ${p.name}${p.price!=null?` — ${p.price} د.ع`:""}\n`; });
         if(catalog.length>8) s+=`… و${catalog.length-8} باقة إضافية`;
         add(botMsg(s)); }
-      else add(botMsg("🌹 قائمة الورود تجي من نظام الإدارة.\nاتصل بالنظام واضغط «جلب الكتالوج» حتى تظهر المنتجات هنا."));
+      else add(botMsg("🌹 قائمة الورود تأتي من نظام الإدارة.\nاتصل بالنظام واضغط «جلب الكتالوج» لعرض المنتجات هنا."));
       break;
     }
     case "offers": add(userMsg("2")); add(botMsg(state.offers.text)); break;
@@ -535,17 +535,17 @@ function renderPreview(){
 function exportJSON(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
-  a.href=url; a.download="qadah-bot-content.json"; a.click(); URL.revokeObjectURL(url); toast("انزّل ملف JSON ✓");
+  a.href=url; a.download="qadah-bot-content.json"; a.click(); URL.revokeObjectURL(url); toast("تم تنزيل ملف JSON ✓");
 }
 function importJSON(file){
   const r=new FileReader();
-  r.onload=()=>{ try{ state=merge(DEFAULTS,JSON.parse(r.result)); buildEditor(); renderPreview(); toast("انستورد المحتوى ✓"); }
-    catch(e){ toast("الملف مو JSON صحيح"); } };
+  r.onload=()=>{ try{ state=merge(DEFAULTS,JSON.parse(r.result)); buildEditor(); renderPreview(); toast("تم استيراد المحتوى ✓"); }
+    catch(e){ toast("الملف ليس JSON صحيحاً"); } };
   r.readAsText(file);
 }
 function resetAll(){
-  if(confirm("ترجّع كل المحتوى للنسخة الافتراضية؟ التعديلات غير المحفوظة تروح.")){
-    state=clone(DEFAULTS); buildEditor(); renderPreview(); toast("رجّعنا الافتراضي ✓");
+  if(confirm("هل تريد إرجاع كل المحتوى إلى النسخة الافتراضية؟ ستُفقد التعديلات غير المحفوظة.")){
+    state=clone(DEFAULTS); buildEditor(); renderPreview(); toast("تمت الاستعادة إلى الافتراضي ✓");
   }
 }
 let tt;
