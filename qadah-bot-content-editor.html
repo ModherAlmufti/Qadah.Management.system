@@ -170,6 +170,11 @@
           <div class="add-row"><button class="btn connect" id="btnLogin">تسجيل الدخول والتحميل</button></div>
         </div>
 
+        <div id="userBox" style="display:none">
+          <div class="conn-status on" style="margin-top:12px">مسجّل دخول كـ <b id="userEmail"></b></div>
+          <div class="add-row"><button class="btn" id="btnLogout" style="background:rgba(122,75,75,.12);color:#7a4b4b">تسجيل خروج / تبديل الحساب</button></div>
+        </div>
+
         <label class="fld"><span class="lab">اسم جدول الكتالوج (تصفح الورود)</span>
           <input class="txt" id="sbTable" dir="ltr" placeholder="products"></label>
         <div class="add-row"><button class="btn" id="btnCatalog" style="background:var(--gold);color:#3a2c10">جلب الكتالوج من النظام</button></div>
@@ -286,20 +291,29 @@ async function connect(){
   try{
     const lib=await loadSbLib();
     sbClient=lib.createClient(conf.url, conf.anon);
-    await saveConf();
+    saveConf();
     const { data:{ session } } = await sbClient.auth.getSession();
     sbUser = session?.user || null;
-    el("loginBox").style.display = sbUser ? "none" : "block";
-    setConnState();
+    updateAuthUI(); setConnState();
     toast("اتصلنا بالنظام ✓");
     if(sbUser) await pullContent();
   }catch(e){ toast(e.message||"فشل الاتصال"); }
+}
+function updateAuthUI(){
+  const logged = !!(sbClient && sbUser);
+  el("loginBox").style.display = (sbClient && !sbUser) ? "block" : "none";
+  el("userBox").style.display = logged ? "block" : "none";
+  if(logged) el("userEmail").textContent = sbUser.email || "المدير";
+}
+async function logout(){
+  try{ if(sbClient) await sbClient.auth.signOut(); }catch(e){}
+  sbUser=null; updateAuthUI(); setConnState(); toast("سجّلنا خروجك — تكدر تسجّل دخول بحساب آخر");
 }
 async function login(){
   if(!sbClient){ toast("اتصل بالنظام أول"); return; }
   const { data, error } = await sbClient.auth.signInWithPassword({ email:el("sbEmail").value.trim(), password:el("sbPass").value });
   if(error){ toast("بيانات الدخول غلط"); return; }
-  sbUser=data.user; el("loginBox").style.display="none"; setConnState();
+  sbUser=data.user; updateAuthUI(); setConnState();
   toast("سجّلنا دخولك ✓"); await pullContent();
 }
 async function pullContent(){
@@ -546,12 +560,14 @@ el("fileImport").addEventListener("change",e=>{if(e.target.files[0]) importJSON(
 el("connHead").addEventListener("click",()=>el("connSec").classList.toggle("open"));
 el("btnConnect").addEventListener("click",connect);
 el("btnLogin").addEventListener("click",login);
+el("btnLogout").addEventListener("click",logout);
 el("btnCatalog").addEventListener("click",fetchCatalog);
 
 (async function init(){
-  await loadLocal();
+  loadLocal();
   el("sbUrl").value=conf.url; el("sbAnon").value=conf.anon; el("sbTable").value=conf.table;
   buildEditor(); buildTabs(); renderPreview(); setConnState();
+  if(conf.url && conf.anon) connect();
 })();
 </script>
 </body>
