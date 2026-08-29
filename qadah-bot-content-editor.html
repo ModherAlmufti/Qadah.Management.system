@@ -80,6 +80,12 @@
   .menu-del:hover{background:rgba(122,75,75,.2)}
   .btn.add-menu{background:rgba(85,107,47,.12);color:var(--olive);margin-top:12px;padding:9px 15px}
   .btn.add-menu:hover{background:rgba(85,107,47,.2)}
+  .node-card{border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-top:10px;background:#fcfbf7}
+  .menu-tree.nested{margin-top:10px;padding-inline-start:12px;border-inline-start:2px dashed #e2cfa6}
+  .node-action{display:flex;align-items:center;gap:9px;margin-top:9px}
+  .node-lab{font-size:.8rem;font-weight:700;color:var(--muted);white-space:nowrap}
+  input.txt.sel,select.txt.sel{padding:8px 11px;font-family:inherit;flex:1;cursor:pointer;background:#fff}
+  .node-card textarea{margin-top:9px}
 
   .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
   .chip{display:inline-flex;align-items:center;gap:7px;background:rgba(200,169,106,.18);border:1px solid #e2cfa6;
@@ -207,9 +213,9 @@ const DEFAULTS = {
   welcome:{
     intro:"👋 مرحباً بك في قدّاح للورد.\nنسعد بخدمتك وتوصيل أجمل الورود لأحبائك.\nمن فضلك اختر ما تريد:",
     items:[
-      {emoji:"🌹", label:"تصفح الورود"},
-      {emoji:"🎁", label:"عروض خاصة"},
-      {emoji:"📦", label:"تتبع طلبي"}
+      {id:"m1", emoji:"🌹", label:"تصفح الورود", action:"builtin", builtin:"browse"},
+      {id:"m2", emoji:"🎁", label:"عروض خاصة", action:"builtin", builtin:"offers"},
+      {id:"m3", emoji:"📦", label:"تتبع طلبي", action:"builtin", builtin:"track"}
     ],
     prompt:"أرسل رقم الخيار."
   },
@@ -351,15 +357,16 @@ function setConnState(){
 /* ============ editor ============ */
 function el(id){return document.getElementById(id)}
 function buildEditor(){
+  migrateMenu();
   const root=el("editor"); root.innerHTML="";
 
   root.appendChild(section("welcome","👋","الترحيب والقائمة الرئيسية", b=>{
     b.appendChild(textField("مقدمة رسالة الترحيب","welcome","intro"));
     const w=document.createElement("div");
-    w.innerHTML=`<label class="fld"><span class="lab">خيارات القائمة (ترقّم تلقائياً 1، 2، 3…)</span></label>`;
-    w.appendChild(menuItemsEditor()); b.appendChild(w);
+    w.innerHTML=`<label class="fld"><span class="lab">خيارات القائمة (شجرة، تتفرّع بلا حد)</span></label>`;
+    w.appendChild(menuTreeEditor(state.welcome.items, 0)); b.appendChild(w);
     b.appendChild(inputField("سطر الطلب (تحت الخيارات)","welcome","prompt"));
-    b.appendChild(hint('يرد العميل <b>برقم</b> الخيار. تُكتب الأرقام تلقائياً حسب الترتيب.'));
+    b.appendChild(hint('كل خيار له نوع: <b>رسالة نص</b> (يعرض نصاً)، أو <b>قائمة فرعية</b> (تتفرّع لخيارات أخرى)، أو <b>إجراء مدمج</b> (تصفح، عروض، تتبع). يرد العميل برقم الخيار.'));
   }));
 
   root.appendChild(section("catalog","🌹","تصفح الورود (من نظام الإدارة)", b=>{
@@ -432,28 +439,98 @@ function inputField(labelText,objKey,key){
 }
 function hint(html){const d=document.createElement("div");d.className="hint";d.innerHTML=html;return d}
 
-function menuItemsEditor(){
-  const c=document.createElement("div"); const arr=()=>state.welcome.items;
-  const render=()=>{
-    c.innerHTML="";
-    arr().forEach((it,idx)=>{
-      const row=document.createElement("div"); row.className="menu-row";
-      const num=document.createElement("span"); num.className="menu-num"; num.textContent=(idx+1);
-      const em=document.createElement("input"); em.className="txt em"; em.value=it.emoji; em.maxLength=3;
-      em.addEventListener("focus",()=>setTab("welcome"));
-      em.addEventListener("input",()=>{it.emoji=em.value; if(activeTab==="welcome") renderPreview();});
-      const lab=document.createElement("input"); lab.className="txt"; lab.value=it.label; lab.placeholder="اسم الخيار";
-      lab.addEventListener("focus",()=>setTab("welcome"));
-      lab.addEventListener("input",()=>{it.label=lab.value; if(activeTab==="welcome") renderPreview();});
-      const del=document.createElement("button"); del.type="button"; del.className="menu-del"; del.textContent="×";
-      del.addEventListener("click",()=>{arr().splice(idx,1); render(); if(activeTab==="welcome") renderPreview();});
-      row.append(num,em,lab,del); c.appendChild(row);
+// يعطي كل عنصر قديم (emoji+label فقط) نوع إجراء، ويحافظ على الوظائف الأساسية.
+function migrateMenu(){
+  const items = state.welcome && state.welcome.items;
+  if(!Array.isArray(items)) return;
+  const map = ['browse','offers','track'];
+  const fix = (arr, top) => {
+    arr.forEach((it,i)=>{
+      if(!it.id) it.id = 'n'+Math.random().toString(36).slice(2,8);
+      if(!it.action){
+        if(top && i<3){ it.action='builtin'; it.builtin=map[i]; }
+        else { it.action='message'; it.message=it.message||''; }
+      }
+      if(it.action==='submenu'){ if(!Array.isArray(it.items)) it.items=[]; fix(it.items,false); }
     });
-    const add=document.createElement("button"); add.type="button"; add.className="btn add-menu"; add.textContent="➕ إضافة خيار";
-    add.addEventListener("click",()=>{arr().push({emoji:"🌸",label:"خيار جديد"}); render(); if(activeTab==="welcome") renderPreview();});
-    c.appendChild(add);
   };
-  render(); return c;
+  fix(items, true);
+}
+
+function refreshPreview(){ if(activeTab==="welcome") renderPreview(); }
+
+function menuInput(val, extraClass, onInput, placeholder, maxLen){
+  const i=document.createElement("input"); i.className="txt "+(extraClass||""); i.value=val||"";
+  if(placeholder) i.placeholder=placeholder; if(maxLen) i.maxLength=maxLen;
+  i.addEventListener("focus",()=>setTab("welcome"));
+  i.addEventListener("input",()=>onInput(i.value));
+  return i;
+}
+
+// محرّر شجرة الخيارات (متكرّر، بلا حد للعمق)
+function menuTreeEditor(items, depth){
+  const wrap=document.createElement("div"); wrap.className="menu-tree"+(depth>0?" nested":"");
+  const render=()=>{
+    wrap.innerHTML="";
+    items.forEach((it,idx)=> wrap.appendChild(nodeCard(items, idx, depth, render)));
+    const add=document.createElement("button"); add.type="button"; add.className="btn add-menu";
+    add.textContent = depth===0 ? "➕ إضافة خيار رئيسي" : "➕ إضافة خيار فرعي";
+    add.addEventListener("click",()=>{
+      items.push({ id:'n'+Math.random().toString(36).slice(2,8), emoji:"🌸", label:"خيار جديد", action:"message", message:"" });
+      render(); refreshPreview();
+    });
+    wrap.appendChild(add);
+  };
+  render(); return wrap;
+}
+
+function nodeCard(arr, idx, depth, rerender){
+  const it=arr[idx];
+  const card=document.createElement("div"); card.className="node-card";
+
+  const row=document.createElement("div"); row.className="menu-row";
+  const num=document.createElement("span"); num.className="menu-num"; num.textContent=(idx+1);
+  const em=menuInput(it.emoji,"em",v=>{it.emoji=v; refreshPreview();},"أيقونة",3);
+  const lab=menuInput(it.label,"",v=>{it.label=v; refreshPreview();},"اسم الخيار");
+  const del=document.createElement("button"); del.type="button"; del.className="menu-del"; del.textContent="×"; del.title="حذف الخيار";
+  del.addEventListener("click",()=>{ arr.splice(idx,1); rerender(); refreshPreview(); });
+  row.append(num,em,lab,del); card.appendChild(row);
+
+  const actWrap=document.createElement("div"); actWrap.className="node-action";
+  const al=document.createElement("span"); al.className="node-lab"; al.textContent="نوع الإجراء:";
+  const sel=document.createElement("select"); sel.className="txt sel";
+  [["message","رسالة نص"],["submenu","قائمة فرعية"],["builtin","إجراء مدمج"]].forEach(([v,t])=>{
+    const o=document.createElement("option"); o.value=v; o.textContent=t; if((it.action||"message")===v) o.selected=true; sel.appendChild(o);
+  });
+  sel.addEventListener("change",()=>{
+    it.action=sel.value;
+    if(it.action==="submenu" && !Array.isArray(it.items)) it.items=[];
+    if(it.action==="builtin" && !it.builtin) it.builtin="browse";
+    if(it.action==="message" && it.message==null) it.message="";
+    rerender(); refreshPreview();
+  });
+  actWrap.append(al,sel); card.appendChild(actWrap);
+
+  const type=it.action||"message";
+  if(type==="message"){
+    const ta=document.createElement("textarea"); ta.value=it.message||""; ta.placeholder="نص الرد الذي يظهر عند اختيار هذا الخيار";
+    ta.addEventListener("focus",()=>setTab("welcome"));
+    ta.addEventListener("input",()=>{it.message=ta.value; refreshPreview();});
+    card.appendChild(ta);
+  } else if(type==="builtin"){
+    const w=document.createElement("div"); w.className="node-action";
+    const bl=document.createElement("span"); bl.className="node-lab"; bl.textContent="الوظيفة:";
+    const b=document.createElement("select"); b.className="txt sel";
+    [["browse","تصفح الورود"],["offers","العروض"],["track","تتبع الطلب"]].forEach(([v,t])=>{
+      const o=document.createElement("option"); o.value=v; o.textContent=t; if((it.builtin||"browse")===v) o.selected=true; b.appendChild(o);
+    });
+    b.addEventListener("change",()=>{ it.builtin=b.value; });
+    w.append(bl,b); card.appendChild(w);
+  } else if(type==="submenu"){
+    if(!Array.isArray(it.items)) it.items=[];
+    card.appendChild(menuTreeEditor(it.items, depth+1));
+  }
+  return card;
 }
 function chipList(){
   const c=document.createElement("div"); const arr=()=>state.deliveryTimes;
