@@ -166,6 +166,7 @@
     <button class="btn btn-ghost" id="btnBulk" onclick="openBulk()">↕ تعديل الأسعار</button>
     <button class="btn btn-gold" onclick="openCatalog()">📖 كتالوج</button>
     <button class="btn btn-green" onclick="exportProductsCSV()">⤓ تصدير</button>
+    <button class="btn btn-ghost hidden" id="btnMigrate" onclick="migrateImages()">↻ نقل الصور القديمة إلى Supabase</button>
     <button class="btn btn-primary" id="btnAdd" onclick="openProduct()">＋ صنف</button>
   </div>
   <div class="grid" id="grid"></div>
@@ -400,6 +401,7 @@ async function onSignedIn(){
   if(isSupplier()){await loadSupplierSelf();subscribe();return;}
 
   document.getElementById('btnAdd').classList.toggle('hidden',!can.add());
+  document.getElementById('btnMigrate').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('btnBulk').classList.toggle('hidden',!can.bulk());
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
@@ -441,7 +443,17 @@ function renderSupplierSelf(){
       <div class="body"><span class="tag">${esc(p.category||'')}</span>
         <div class="code">صنف ${p.code||''}</div><h3>${esc(p.name_ar)}</h3>
         <div class="cost-line">سعر توريدك: ${fmt(p.supplier_price)} د.ع</div>
+        ${p.id?`<label class="btn btn-ghost" style="margin-top:8px;cursor:pointer;font-size:13px">📷 تغيير الصورة<input type="file" accept="image/*" style="display:none" onchange="supplierChangeImage(event,'${p.id}')"></label>`:''}
       </div></div>`).join(''):'<div class="empty">لا منتجات مرتبطة بك بعد. تضيفها إدارة قدح.</div>';
+}
+async function supplierChangeImage(e,productId){
+  const f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value='';
+  toast('جارٍ رفع الصورة...');
+  const url=await uploadImage(f); if(!url)return;
+  const {error}=await sb.rpc('set_product_image',{p_product_id:String(productId),p_image_url:url});
+  if(error){toast(error.message||'تعذّر تغيير الصورة');return;}
+  toast('تم تغيير الصورة');
+  await loadSupplierSelf();
 }
 async function saveMyData(){
   if(!myRow)return;
@@ -600,7 +612,7 @@ function openProduct(id){
     ['p_avSup','p_avDel','p_photo'].forEach(k=>document.getElementById(k).value='');
     document.getElementById('p_status').value='نشط';document.getElementById('p_supplier').value='';document.getElementById('p_cost').value='';
   }
-  ['p_nameAr','p_nameEn','p_cat','p_occasion','p_note','p_imgfile','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=editorOnly);
+  ['p_nameAr','p_nameEn','p_cat','p_occasion','p_note','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=editorOnly);
   updateProfitHint();
   document.getElementById('prodModal').classList.add('show');
 }
@@ -620,6 +632,44 @@ async function uploadImage(file){
   if(error){toast('تعذّر رفع الصورة');return null;}
   return sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
 }
+const IMG_MARKER='/storage/v1/object/public/product-images/';
+function storagePathFromUrl(u){
+  if(!u||!u.includes(IMG_MARKER))return null;
+  return decodeURIComponent(u.split(IMG_MARKER)[1].split(/[?#]/)[0]);
+}
+async function deleteImageIfSupabase(u){
+  const path=storagePathFromUrl(u);
+  if(path){try{await sb.storage.from('product-images').remove([path]);}catch(e){console.error('remove img',e);}}
+}
+async function migrateImages(){
+  if(ROLE!=='admin'){toast('المدير فقط');return;}
+  const todo=products.filter(p=>{const u=p.image_url;
+    if(!u||u.startsWith('data:')||u.includes(IMG_MARKER))return false;return true;});
+  if(!todo.length){toast('لا توجد صور تحتاج نقلاً. كل الصور في Supabase.');return;}
+  if(!confirm(`سيتم نقل ${todo.length} صورة من مكانها الحالي إلى Supabase. تابع؟`))return;
+  const btn=document.getElementById('btnMigrate');btn.disabled=true;
+  let ok=0,fail=0;
+  for(let i=0;i<todo.length;i++){const p=todo[i];
+    btn.textContent=`نقل الصور... ${i+1}/${todo.length}`;
+    try{
+      const abs=new URL(p.image_url,location.href).href;
+      const res=await fetch(abs,{cache:'no-store'});
+      if(!res.ok)throw new Error('fetch '+res.status);
+      const blob=await res.blob();
+      const ext=((p.image_url.split(/[?#]/)[0].split('.').pop())||'jpg').toLowerCase();
+      const path=`migrated_${p.code||p.id}_${Date.now()}.${ext}`;
+      const {error:upErr}=await sb.storage.from('product-images').upload(path,blob,{upsert:true,contentType:blob.type||'image/jpeg'});
+      if(upErr)throw upErr;
+      const url=sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
+      const {error:updErr}=await sb.from('products').update({image_url:url}).eq('id',p.id);
+      if(updErr)throw updErr;
+      ok++;
+    }catch(e){console.error('migrate fail code',p.code,e);fail++;}
+  }
+  btn.disabled=false;btn.textContent='↻ نقل الصور القديمة إلى Supabase';
+  await fetchProducts();renderProducts();
+  toast(`تم نقل ${ok} صورة`+(fail?`، وتعذّر نقل ${fail} (راجع Console)`:''));
+}
 async function saveProduct(){
   const name_ar=p_nameAr.value.trim(), price=parseInt(p_price.value,10);
   if(!name_ar){toast('اكتب اسم الصنف');return;}
@@ -630,6 +680,7 @@ async function saveProduct(){
     let productId=p_id.value;
     if(productId){
       const p=products.find(x=>x.id===productId);
+      const oldUrl=p?p.image_url:null;
       let payload;
       if(ROLE==='editor')payload={price,margin:parseInt(p_margin.value,10)||0};
       else{payload={name_ar,name_en:p_nameEn.value.trim(),price,margin:parseInt(p_margin.value,10)||0,
@@ -641,6 +692,11 @@ async function saveProduct(){
         if(image_url)payload.image_url=image_url;}
       const {error}=await sb.from('products').update(payload).eq('id',productId);
       if(error)throw error;
+      if(image_url&&ROLE==='editor'){
+        const {error:imgErr}=await sb.rpc('set_product_image',{p_product_id:String(productId),p_image_url:image_url});
+        if(imgErr)throw imgErr;
+      }
+      if(image_url&&oldUrl&&oldUrl!==image_url)await deleteImageIfSupabase(oldUrl);
     }else{
       const nextCode=products.length?Math.max(...products.map(p=>p.code||0))+1:1;
       const {data,error}=await sb.from('products').insert({code:nextCode,name_ar,name_en:p_nameEn.value.trim(),
@@ -671,6 +727,7 @@ async function removeProduct(id){
   if(!confirm(`حذف "${p.name_ar}"؟`))return;
   const {error}=await sb.from('products').delete().eq('id',id);
   if(error){toast('تعذّر الحذف');return;}
+  await deleteImageIfSupabase(p.image_url);
   await fetchProducts();renderProducts();toast('تم الحذف');
 }
 async function toggleStar(id){
