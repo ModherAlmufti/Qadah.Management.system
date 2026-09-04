@@ -243,7 +243,7 @@
     <div class="field"><label>اسم الصنف (إنجليزي)</label><input id="p_nameEn" class="en" placeholder="Red Rose Bouquet"></div>
     <div class="row2">
       <div class="field"><label>سعر البيع للعميل (IQD)</label><input id="p_price" type="number" min="0" placeholder="75000"></div>
-      <div class="field"><label>نسبة الربح %</label><input id="p_margin" type="number" min="0" max="100" placeholder="16"></div></div>
+      <div class="field"><label>نسبة الربح %</label><input id="p_margin" type="number" min="0" placeholder="16"></div></div>
     <div class="field"><label>النوع</label><select id="p_cat"></select></div>
 
     <div class="cost-box hidden" id="p_costBox">
@@ -586,6 +586,7 @@ function renderStats(){
 }
 
 let pickedFile=null;
+let priceModalHadCost=false;
 function openProduct(id){
   if(id&&!can.editPrice())return; if(!id&&!can.add())return;
   pickedFile=null;
@@ -605,18 +606,40 @@ function openProduct(id){
     const c=costMap[p.id]||{};
     document.getElementById('p_supplier').value=c.supplier_id||'';
     document.getElementById('p_cost').value=c.supplier_price!=null?c.supplier_price:'';
+    priceModalHadCost=(c.supplier_price!=null&&c.supplier_price>0);
   }else{
     document.getElementById('prodTitle').textContent='إضافة صنف';
     p_id.value='';p_nameAr.value='';p_nameEn.value='';p_price.value='';p_margin.value='16';p_cat.value='ورد';
     p_occasion.value='';p_note.value='';document.getElementById('p_preview').src=PLACEHOLDER;
     ['p_avSup','p_avDel','p_photo'].forEach(k=>document.getElementById(k).value='');
-    document.getElementById('p_status').value='نشط';document.getElementById('p_supplier').value='';document.getElementById('p_cost').value='';
+    document.getElementById('p_status').value='نشط';document.getElementById('p_supplier').value='';document.getElementById('p_cost').value='';priceModalHadCost=false;
   }
   ['p_nameAr','p_nameEn','p_cat','p_occasion','p_note','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=editorOnly);
   updateProfitHint();
   document.getElementById('prodModal').classList.add('show');
 }
-document.addEventListener('input',e=>{if(e.target&&(e.target.id==='p_cost'||e.target.id==='p_price'))updateProfitHint();});
+document.addEventListener('input',e=>{if(e.target&&['p_cost','p_price','p_margin'].includes(e.target.id))recalcPricing(e.target.id);});
+function roundTo(n,step){return Math.round(n/step)*step;}
+function recalcPricing(src){
+  const cost=parseInt(document.getElementById('p_cost').value,10);
+  const price=parseInt(document.getElementById('p_price').value,10);
+  const margin=parseFloat(document.getElementById('p_margin').value);
+  const hasCost=!isNaN(cost)&&cost>0;
+  if(src==='p_price'){
+    if(hasCost&&!isNaN(price))document.getElementById('p_margin').value=Math.round((price-cost)/cost*100);
+  }else if(src==='p_margin'){
+    if(hasCost&&!isNaN(margin))document.getElementById('p_price').value=roundTo(cost*(1+margin/100),500);
+  }else if(src==='p_cost'){
+    if(!priceModalHadCost){
+      // أول إدخال للتكلفة: يبقى السعر كما هو وتُحسب النسبة منه
+      if(hasCost&&!isNaN(price))document.getElementById('p_margin').value=Math.round((price-cost)/cost*100);
+    }else{
+      // تغيير تكلفة لصنف له تكلفة أصلاً: يتحرّك السعر من النسبة
+      if(hasCost&&!isNaN(margin))document.getElementById('p_price').value=roundTo(cost*(1+margin/100),500);
+    }
+  }
+  updateProfitHint();
+}
 function updateProfitHint(){
   const price=parseInt(document.getElementById('p_price').value,10)||0;
   const cost=parseInt(document.getElementById('p_cost').value,10);
