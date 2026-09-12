@@ -87,6 +87,33 @@
   .row-actions button{padding:6px 12px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700}
   .chip{font-size:12px;font-weight:700;padding:3px 10px;border-radius:14px;background:var(--green-soft);color:var(--green);white-space:nowrap}
 
+  /* ===== حالات الطلب: لون لكل مرحلة ===== */
+  .ostatus{font-size:12px;font-weight:700;padding:3px 11px;border-radius:14px;white-space:nowrap;display:inline-block}
+  .os-pending{background:#f3ecdc;color:#8a6d1e}
+  .os-sent_to_supplier{background:#e6ecf3;color:#3a5a86}
+  .os-confirmed{background:#e7eef7;color:#2f6db0}
+  .os-prepared{background:#efe8f5;color:#6b46a8}
+  .os-picked_up{background:#e6f0ea;color:#3f7d55}
+  .os-delivered{background:var(--green-soft);color:var(--green)}
+  .os-cancelled{background:#f3e0e0;color:var(--danger)}
+  .pay-paid{background:var(--green-soft);color:var(--green)}
+  .pay-unpaid{background:#f3ecdc;color:#8a6d1e}
+  .clickrow{cursor:pointer}
+
+  /* ===== خط زمني لسجل الطلب داخل المودال ===== */
+  .timeline{list-style:none;position:relative;padding:6px 22px 0 0;margin-top:4px}
+  .timeline::before{content:"";position:absolute;top:8px;bottom:10px;right:6px;width:2px;background:var(--line)}
+  .timeline li{position:relative;padding:0 0 16px 0;font-size:14px}
+  .timeline li::before{content:"";position:absolute;right:-20px;top:5px;width:11px;height:11px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);box-shadow:0 0 0 2px var(--line)}
+  .timeline li .tl-status{font-weight:700;color:var(--ink)}
+  .timeline li .tl-meta{font-size:12px;color:var(--ink-soft);margin-top:2px}
+  .timeline li .tl-meta .en{margin:0 3px}
+  .move-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .order-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  .order-detail-grid .dl{font-size:12px;color:var(--ink-soft);font-weight:700}
+  .order-detail-grid .dv{font-size:15px;color:var(--ink);margin-bottom:6px}
+  @media(max-width:600px){.order-detail-grid{grid-template-columns:1fr}}
+
   .overlay{position:fixed;inset:0;background:rgba(40,30,20,.5);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
   .overlay.show{display:flex}
   .modal{background:var(--surface);border-radius:18px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
@@ -149,6 +176,7 @@
 
 <div class="tabs">
   <button class="tab active" data-tab="catalog" onclick="switchTab('catalog')">🌸 الكتالوج</button>
+  <button class="tab" data-tab="orders" onclick="switchTab('orders')">🧾 الطلبات</button>
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
   <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
@@ -170,6 +198,20 @@
     <button class="btn btn-primary" id="btnAdd" onclick="openProduct()">＋ صنف</button>
   </div>
   <div class="grid" id="grid"></div>
+</section>
+
+<!-- ORDERS -->
+<section id="tab-orders" class="hidden">
+  <div class="stats" id="ordStats"></div>
+  <div class="toolbar">
+    <div class="search"><input id="ordSearch" type="text" placeholder="ابحث برقم الطلب أو اسم المستلم أو الهاتف..." oninput="renderOrders()"></div>
+    <select id="ordStatusFilter" onchange="renderOrders()"></select>
+    <select id="ordPayFilter" onchange="renderOrders()">
+      <option value="">كل حالات الدفع</option><option value="unpaid">غير مدفوع</option><option value="paid">مدفوع</option></select>
+    <button class="btn btn-ghost" onclick="fetchOrders().then(renderOrders)">↻ تحديث</button>
+    <button class="btn btn-green" onclick="exportOrdersCSV()">⤓ تصدير</button>
+  </div>
+  <div class="tablewrap" id="ordTable"></div>
 </section>
 
 <!-- SUPPLIERS -->
@@ -269,6 +311,29 @@
   <div class="modal-foot"><button class="btn btn-primary" id="p_saveBtn" onclick="saveProduct()">حفظ</button><button class="btn btn-ghost" onclick="close_('prodModal')">إلغاء</button></div>
 </div></div>
 
+<!-- ORDER DETAIL MODAL -->
+<div class="overlay" id="ordModal"><div class="modal">
+  <div class="modal-head"><h2 id="ord_title">تفاصيل الطلب</h2><button class="x" onclick="close_('ordModal')">&times;</button></div>
+  <div class="modal-body">
+    <div class="order-detail-grid" id="ord_detail"></div>
+
+    <div class="cost-box" id="ord_moveBox" style="background:#fbf7f8;border-color:#ecd9de">
+      <div class="tagline" style="color:var(--accent)">↪ تحريك حالة الطلب</div>
+      <div class="move-row">
+        <select id="ord_newStatus" style="flex:1;min-width:160px"></select>
+        <button class="btn btn-primary" id="ord_moveBtn" onclick="moveOrderStatus()">تطبيق</button>
+      </div>
+      <div class="hint" id="ord_moveHint"></div>
+    </div>
+
+    <div>
+      <h3 style="font-size:15px;color:var(--accent);margin-bottom:6px">السجل الزمني</h3>
+      <ul class="timeline" id="ord_timeline"></ul>
+    </div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-ghost" onclick="close_('ordModal')">إغلاق</button></div>
+</div></div>
+
 <!-- SUPPLIER MODAL -->
 <div class="overlay" id="supModal"><div class="modal" style="max-width:500px">
   <div class="modal-head"><h2 id="supTitle">إضافة مورد</h2><button class="x" onclick="close_('supModal')">&times;</button></div>
@@ -347,13 +412,30 @@ const SUPABASE_ANON_KEY="sb_publishable_JyCAQnMnltVq9nESIZjNew_St2FI6Ch";
 const CATS=['ورد','زنابق','عباد الشمس','أنثوريوم','أقحوان','صناديق','منوعات','مناسبات كبيرة'];
 const PLACEHOLDER='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="86"><rect width="100" height="86" fill="#ddd6c6"/><text x="50" y="52" font-size="30" text-anchor="middle" fill="#9a9080">✿</text></svg>');
 
+/* ===== حالات الطلب: القيمة إنجليزية في القاعدة، الترجمة هنا فقط ===== */
+const ORDER_STAGES=['pending','sent_to_supplier','confirmed','prepared','picked_up','delivered','cancelled'];
+const STATUS_AR={pending:'طلب جديد',sent_to_supplier:'أُرسل للمورد',confirmed:'مؤكد',prepared:'جُهّز',picked_up:'مع التوصيل',delivered:'تم التوصيل',cancelled:'ملغى'};
+const PAY_AR={unpaid:'غير مدفوع',paid:'مدفوع'};
+/* المسار الطبيعي للأمام لكل مرحلة، مع الإلغاء كخيار دائم قبل التسليم */
+const NEXT_STAGES={
+  pending:['sent_to_supplier','cancelled'],
+  sent_to_supplier:['confirmed','cancelled'],
+  confirmed:['prepared','cancelled'],
+  prepared:['picked_up','cancelled'],
+  picked_up:['delivered','cancelled'],
+  delivered:[],
+  cancelled:[]
+};
+
 let sb=null, ROLE=null, USERNAME=null, USERID=null;
 let products=[], suppliers=[], drivers=[], costMap={};
+let orders=[], currentOrderId=null;
 let myRow=null, myProducts=[];   // بيانات المورد نفسه ومنتجاته
 let currentTab='catalog';
 const can={add:()=>ROLE==='admin',delete:()=>ROLE==='admin',editAll:()=>ROLE==='admin',
   editPrice:()=>ROLE==='admin'||ROLE==='editor',bulk:()=>ROLE==='admin'||ROLE==='editor',
-  seeCost:()=>ROLE==='admin'||ROLE==='editor',manageSup:()=>ROLE==='admin'||ROLE==='editor'};
+  seeCost:()=>ROLE==='admin'||ROLE==='editor',manageSup:()=>ROLE==='admin'||ROLE==='editor',
+  moveOrder:()=>ROLE==='admin'||ROLE==='editor'};
 const isSupplier=()=>ROLE==='supplier';
 
 const fmt=n=>Number(n||0).toLocaleString('en-US');
@@ -362,6 +444,10 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;'
 function setMsg(t,ok){const m=document.getElementById('lg_msg');m.textContent=t;m.className='login-msg '+(ok?'ok':'err');}
 function close_(id){document.getElementById(id).classList.remove('show');}
 function fillSelect(sel,withAll){sel.innerHTML=(withAll?'<option value="">كل الأنواع</option>':'')+CATS.map(c=>`<option>${c}</option>`).join('');}
+function fmtDateTime(iso){if(!iso)return '';const d=new Date(iso);if(isNaN(d))return '';
+  return d.toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
+function fmtDate(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return esc(v);
+  return d.toLocaleDateString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit'});}
 
 /* boot */
 function notConfigured(){return SUPABASE_URL.includes('YOUR-PROJECT')||SUPABASE_ANON_KEY.includes('YOUR-ANON');}
@@ -408,7 +494,8 @@ async function onSignedIn(){
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
   fillSelect(document.getElementById('p_cat'),false);
-  await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts()]);
+  fillOrderStatusFilter();
+  await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts(),fetchOrders()]);
   if(can.seeCost())await fetchCosts();
   if(ROLE==='admin')await fetchUsers();
   renderAll();subscribe();
@@ -417,7 +504,7 @@ async function onSignedIn(){
 /* واجهة المورد: يرى تبويباً واحداً ببياناته ومنتجاته فقط */
 async function loadSupplierSelf(){
   document.querySelectorAll('.tab').forEach(b=>b.classList.add('hidden'));
-  ['tab-catalog','tab-suppliers','tab-drivers'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  ['tab-catalog','tab-orders','tab-suppliers','tab-drivers'].forEach(id=>document.getElementById(id).classList.add('hidden'));
   document.getElementById('tab-supplier').classList.remove('hidden');
   const {data:mine}=await sb.from('suppliers').select('*').limit(1);
   myRow=(mine&&mine[0])||null;
@@ -478,6 +565,7 @@ function subscribe(){
     .on('postgres_changes',{event:'*',schema:'public',table:'products'},()=>fetchProducts().then(renderProducts))
     .on('postgres_changes',{event:'*',schema:'public',table:'suppliers'},()=>fetchSuppliers().then(renderSuppliers))
     .on('postgres_changes',{event:'*',schema:'public',table:'drivers'},()=>fetchDrivers().then(renderDrivers))
+    .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>fetchOrders().then(renderOrders))
     .subscribe();
 }
 
@@ -485,15 +573,137 @@ async function fetchProducts(){const {data}=await sb.from('products').select('*'
 async function fetchSuppliers(){const {data}=await sb.from('suppliers').select('*').order('name');suppliers=data||[];}
 async function fetchDrivers(){const {data}=await sb.from('drivers').select('*').order('name');drivers=data||[];}
 async function fetchCosts(){const {data}=await sb.from('product_costs').select('*');costMap={};(data||[]).forEach(c=>costMap[c.product_id]=c);}
+async function fetchOrders(){const {data}=await sb.from('orders').select('*').order('created_at',{ascending:false});orders=data||[];}
 
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
-  if(t==='catalog')renderProducts();else if(t==='suppliers')renderSuppliers();
+  ['catalog','orders','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  if(t==='catalog')renderProducts();else if(t==='orders')renderOrders();
+  else if(t==='suppliers')renderSuppliers();
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
 }
-function renderAll(){renderProducts();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
+function renderAll(){renderProducts();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
+
+/* ============================================================
+   ORDERS — تتبّع دورة حياة الطلب
+============================================================ */
+function fillOrderStatusFilter(){
+  const sel=document.getElementById('ordStatusFilter');
+  sel.innerHTML='<option value="">كل الحالات</option>'+ORDER_STAGES.map(s=>`<option value="${s}">${STATUS_AR[s]}</option>`).join('');
+}
+function statusChipHTML(s){const ar=STATUS_AR[s]||s;return `<span class="ostatus os-${esc(s)}">${esc(ar)}</span>`;}
+function payChipHTML(p){const ar=PAY_AR[p]||p;return `<span class="ostatus pay-${esc(p)}">${esc(ar)}</span>`;}
+
+function renderOrders(){
+  const box=document.getElementById('ordTable'); if(!box)return;
+  const q=document.getElementById('ordSearch').value.trim().toLowerCase();
+  const sf=document.getElementById('ordStatusFilter').value;
+  const pf=document.getElementById('ordPayFilter').value;
+  let list=orders.filter(o=>{
+    const okQ=!q||(o.order_code||'').toLowerCase().includes(q)||(o.recipient_name||'').toLowerCase().includes(q)||(o.recipient_phone||'').toLowerCase().includes(q);
+    return okQ&&(!sf||o.status===sf)&&(!pf||o.payment_status===pf);
+  });
+  renderOrderStats();
+  if(!list.length){box.innerHTML='<div class="empty">لا توجد طلبات مطابقة.</div>';return;}
+  box.innerHTML=`<table class="data"><thead><tr>
+    <th>رقم الطلب</th><th>المستلم</th><th>الهاتف</th><th>الإجمالي</th><th>الحالة</th><th>الدفع</th><th>التاريخ</th></tr></thead><tbody>
+    ${list.map(o=>`<tr class="clickrow" onclick="openOrder('${o.id}')">
+      <td><b class="en">${esc(o.order_code||'')}</b></td>
+      <td>${esc(o.recipient_name||'')}</td>
+      <td class="en">${esc(o.recipient_phone||'')}</td>
+      <td><b>${fmt(o.total)}</b> د.ع</td>
+      <td>${statusChipHTML(o.status)}</td>
+      <td>${payChipHTML(o.payment_status)}</td>
+      <td class="en">${esc(fmtDateTime(o.created_at))}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+function renderOrderStats(){
+  const n=orders.length;
+  const open=orders.filter(o=>o.status!=='delivered'&&o.status!=='cancelled').length;
+  const delivered=orders.filter(o=>o.status==='delivered').length;
+  const revenue=orders.filter(o=>o.status!=='cancelled').reduce((s,o)=>s+(o.total||0),0);
+  document.getElementById('ordStats').innerHTML=`
+    <div class="stat"><div class="num">${n}</div><div class="lbl">إجمالي الطلبات</div></div>
+    <div class="stat"><div class="num">${open}</div><div class="lbl">قيد التنفيذ</div></div>
+    <div class="stat green"><div class="num">${delivered}</div><div class="lbl">تم توصيلها</div></div>
+    <div class="stat green"><div class="num">${fmt(revenue)}</div><div class="lbl">قيمة الطلبات (عدا الملغى)</div></div>`;
+}
+
+async function openOrder(id){
+  currentOrderId=id;
+  const o=orders.find(x=>x.id===id); if(!o)return;
+  document.getElementById('ord_title').innerHTML=`الطلب <span class="en">${esc(o.order_code||'')}</span>`;
+  const dl=(l,v)=>`<div><div class="dl">${l}</div><div class="dv">${v||'—'}</div></div>`;
+  document.getElementById('ord_detail').innerHTML=
+    dl('المستلم',esc(o.recipient_name))+
+    dl('هاتف المستلم',`<span class="en">${esc(o.recipient_phone)}</span>`)+
+    dl('عنوان التوصيل',esc(o.delivery_address))+
+    dl('تاريخ التوصيل',`<span class="en">${esc(fmtDate(o.delivery_date))}</span>`)+
+    dl('الحالة الحالية',statusChipHTML(o.status))+
+    dl('حالة الدفع',payChipHTML(o.payment_status))+
+    dl('قيمة الأصناف',fmt(o.subtotal)+' د.ع')+
+    dl('رسوم التوصيل',fmt(o.delivery_fee)+' د.ع')+
+    dl('الإجمالي','<b>'+fmt(o.total)+' د.ع</b>')+
+    dl('القناة',`<span class="en">${esc(o.channel||'')}</span>`)+
+    (o.gift_message?dl('رسالة الإهداء',esc(o.gift_message)):'');
+
+  // صندوق تحريك الحالة: يظهر لمن يملك الصلاحية وللطلبات غير المنتهية فقط
+  const moveBox=document.getElementById('ord_moveBox');
+  const nexts=NEXT_STAGES[o.status]||[];
+  if(can.moveOrder()&&nexts.length){
+    moveBox.classList.remove('hidden');
+    document.getElementById('ord_newStatus').innerHTML=nexts.map(s=>`<option value="${s}">${STATUS_AR[s]}</option>`).join('');
+    document.getElementById('ord_moveHint').textContent='القيمة تُحفظ إنجليزية في القاعدة ويُسجّل الانتقال تلقائياً في السجل.';
+    document.getElementById('ord_moveBtn').disabled=false;
+  }else{
+    moveBox.classList.add('hidden');
+  }
+
+  document.getElementById('ord_timeline').innerHTML='<li>جارٍ تحميل السجل...</li>';
+  document.getElementById('ordModal').classList.add('show');
+  await loadOrderTimeline(id);
+}
+
+async function loadOrderTimeline(orderId){
+  const {data,error}=await sb.from('order_status_history')
+    .select('old_status,new_status,changed_by_source,changed_at')
+    .eq('order_id',orderId).order('changed_at',{ascending:true});
+  const ul=document.getElementById('ord_timeline');
+  if(error){ul.innerHTML='<li>تعذّر تحميل السجل.</li>';return;}
+  if(!data||!data.length){ul.innerHTML='<li>لا سجل بعد.</li>';return;}
+  const srcAr={dashboard:'من اللوحة',system:'من النظام',boxy:'من التوصيل',qi:'من الدفع'};
+  ul.innerHTML=data.map(h=>{
+    const to=STATUS_AR[h.new_status]||h.new_status;
+    const from=h.old_status?(STATUS_AR[h.old_status]||h.old_status):'إنشاء الطلب';
+    return `<li>
+      <div class="tl-status">${esc(to)}</div>
+      <div class="tl-meta">${esc(from)} ← ${esc(to)} · <span class="en">${esc(fmtDateTime(h.changed_at))}</span> · ${esc(srcAr[h.changed_by_source]||h.changed_by_source||'')}</div>
+    </li>`;
+  }).reverse().join('');
+}
+
+async function moveOrderStatus(){
+  if(!can.moveOrder()||!currentOrderId)return;
+  const newStatus=document.getElementById('ord_newStatus').value;
+  const o=orders.find(x=>x.id===currentOrderId);
+  const label=STATUS_AR[newStatus]||newStatus;
+  if(newStatus==='cancelled'&&!confirm(`إلغاء الطلب ${o?o.order_code:''}؟ لا يمكن التراجع عن الإلغاء.`))return;
+  const btn=document.getElementById('ord_moveBtn');btn.disabled=true;btn.textContent='جارٍ...';
+  const {error}=await sb.rpc('set_order_status',{p_order_id:currentOrderId,p_new_status:newStatus});
+  btn.disabled=false;btn.textContent='تطبيق';
+  if(error){toast(error.message||'تعذّر تغيير الحالة');return;}
+  toast('تم تحديث الحالة إلى: '+label);
+  await fetchOrders();renderOrders();
+  await openOrder(currentOrderId); // إعادة فتح لتحديث التفاصيل والسجل
+}
+
+function exportOrdersCSV(){
+  const head=['رقم الطلب','المستلم','الهاتف','العنوان','تاريخ التوصيل','قيمة الأصناف','رسوم التوصيل','الإجمالي','الحالة','الدفع','القناة','أُنشئ في'];
+  const rows=orders.map(o=>[o.order_code,o.recipient_name,o.recipient_phone,o.delivery_address,fmtDate(o.delivery_date),
+    o.subtotal,o.delivery_fee,o.total,STATUS_AR[o.status]||o.status,PAY_AR[o.payment_status]||o.payment_status,o.channel,fmtDateTime(o.created_at)]);
+  download('orders.csv',head,rows);
+}
 
 /* USERS MANAGEMENT (المدير) */
 let users=[];
@@ -631,10 +841,8 @@ function recalcPricing(src){
     if(hasCost&&!isNaN(margin))document.getElementById('p_price').value=roundTo(cost*(1+margin/100),500);
   }else if(src==='p_cost'){
     if(!priceModalHadCost){
-      // أول إدخال للتكلفة: يبقى السعر كما هو وتُحسب النسبة منه
       if(hasCost&&!isNaN(price))document.getElementById('p_margin').value=Math.round((price-cost)/cost*100);
     }else{
-      // تغيير تكلفة لصنف له تكلفة أصلاً: يتحرّك السعر من النسبة
       if(hasCost&&!isNaN(margin))document.getElementById('p_price').value=roundTo(cost*(1+margin/100),500);
     }
   }
@@ -810,7 +1018,7 @@ function renderSuppliers(){
 }
 function openSupplier(id){
   document.getElementById('s_ownerState').textContent='';
-  document.getElementById('s_linkBox').classList.toggle('hidden',ROLE!=='admin'); // الربط للمدير فقط
+  document.getElementById('s_linkBox').classList.toggle('hidden',ROLE!=='admin');
   if(id){const s=suppliers.find(x=>x.id===id);document.getElementById('supTitle').textContent='تعديل مورد';
     s_id.value=s.id;s_name.value=s.name;s_address.value=s.address||'';s_commission.value=s.commission_pct??'';
     s_person.value=s.contact_person||'';s_phone.value=s.contact_phone||'';s_status.value=s.agreement_status||'';s_note.value=s.notes||'';
@@ -825,7 +1033,6 @@ async function saveSupplier(){
   const payload={name,address:s_address.value.trim()||null,commission_pct:s_commission.value===''?null:parseFloat(s_commission.value),
     contact_person:s_person.value.trim()||null,contact_phone:s_phone.value.trim()||null,
     agreement_status:s_status.value||null,notes:s_note.value.trim()||null};
-  // ربط حساب المورد (المدير فقط)
   let linkEmail=(ROLE==='admin')?s_owner.value.trim().toLowerCase():'';
   let ownerId=null;
   if(linkEmail){
@@ -836,7 +1043,6 @@ async function saveSupplier(){
   let supId=s_id.value;
   const {error}=supId?await sb.from('suppliers').update(payload).eq('id',supId):await sb.from('suppliers').insert(payload).select().single().then(r=>{if(r.data)supId=r.data.id;return r;});
   if(error){toast(error.message);return;}
-  // ترقية دور الحساب إلى مورد
   if(ownerId){const {error:e2}=await sb.from('profiles').update({role:'supplier'}).eq('id',ownerId);
     if(e2)toast('حُفظ المورد، لكن تعذّر ضبط الدور: '+e2.message);}
   close_('supModal');await fetchSuppliers();renderSuppliers();toast(linkEmail?'تم الحفظ وربط الحساب':'تم الحفظ');
