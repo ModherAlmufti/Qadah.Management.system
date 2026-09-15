@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>قدح للورد — نظام الإدارة</title>
+<title>قدّاح للورد — نظام الإدارة</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -118,6 +118,12 @@
   .order-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
   .order-detail-grid .dl{font-size:12px;color:var(--ink-soft);font-weight:700}
   .order-detail-grid .dv{font-size:15px;color:var(--ink);margin-bottom:6px}
+  .items-table{width:100%;border-collapse:collapse;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .items-table th{background:var(--card);text-align:right;padding:9px 11px;font-family:'Cairo';font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap}
+  .items-table td{padding:9px 11px;border-top:1px solid var(--line);font-size:13px;vertical-align:middle}
+  .items-table td.num{white-space:nowrap;font-weight:700}
+  .items-table tfoot td{border-top:2px solid var(--line);font-weight:800;color:var(--accent);background:var(--rose-soft)}
+  .items-empty{font-size:13px;color:var(--ink-soft);padding:10px 2px}
   @media(max-width:600px){.order-detail-grid{grid-template-columns:1fr}}
 
   .overlay{position:fixed;inset:0;background:rgba(40,30,20,.5);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
@@ -163,7 +169,7 @@
   <div class="login-card">
     <div class="brand-mark">✿<img src="icon-cream.png" alt="" onerror="this.remove()"></div>
     <div class="latin">QADAH</div>
-    <h1>قدح للورد</h1>
+    <h1>قدّاح للورد</h1>
     <p>نظام الإدارة — سجّل دخولك للمتابعة</p>
     <div class="setup-note hidden" id="setupNote"></div>
     <input id="lg_email" class="en" type="email" placeholder="البريد الإلكتروني" autocomplete="username">
@@ -177,7 +183,7 @@
 <div id="app" class="hidden">
 <header>
   <div class="brand"><div class="brand-mark">✿<img src="icon-cream.png" alt="" onerror="this.remove()"></div>
-    <div><h1>قدح للورد<span class="latin">QADAH</span></h1><span class="sub">نظام الإدارة <span class="live-dot" title="متصل مباشرة"></span></span></div></div>
+    <div><h1>قدّاح للورد<span class="latin">QADAH</span></h1><span class="sub">نظام الإدارة <span class="live-dot" title="متصل مباشرة"></span></span></div></div>
   <div class="whoami"><span id="userName"></span><span class="role-badge" id="roleBadge"></span>
     <button class="btn btn-ghost" onclick="logout()">خروج</button></div>
 </header>
@@ -248,7 +254,7 @@
 <section id="tab-supplier" class="hidden">
   <div class="stats" id="supStats"></div>
   <div style="padding:0 24px 10px"><h2 style="font-size:20px;color:var(--accent)">بياناتي</h2>
-    <p style="color:var(--ink-soft);font-size:14px">حدّث بيانات محلك. العمولة وحالة الاتفاق تحددها إدارة قدح.</p></div>
+    <p style="color:var(--ink-soft);font-size:14px">حدّث بيانات محلك. العمولة وحالة الاتفاق تحددها إدارة قدّاح.</p></div>
   <div style="padding:0 24px 26px">
     <div class="modal" style="max-width:620px;margin:0;box-shadow:var(--shadow)">
       <div class="modal-body">
@@ -266,7 +272,7 @@
     </div>
   </div>
   <div style="padding:0 24px 10px"><h2 style="font-size:20px;color:var(--accent)">منتجاتي</h2>
-    <p style="color:var(--ink-soft);font-size:14px">الأصناف التي تورّدها لقدح، مع سعر توريدك.</p></div>
+    <p style="color:var(--ink-soft);font-size:14px">الأصناف التي تورّدها لقدّاح، مع سعر توريدك.</p></div>
   <div class="grid" id="myProducts" style="padding-top:0"></div>
 </section>
 
@@ -324,6 +330,11 @@
   <div class="modal-head"><h2 id="ord_title">تفاصيل الطلب</h2><button class="x" onclick="close_('ordModal')">&times;</button></div>
   <div class="modal-body">
     <div class="order-detail-grid" id="ord_detail"></div>
+
+    <div>
+      <h3 style="font-size:15px;color:var(--accent);margin-bottom:6px">أصناف الطلب</h3>
+      <div id="ord_items"></div>
+    </div>
 
     <div class="cost-box" id="ord_moveBox" style="background:#fbf7f8;border-color:#ecd9de">
       <div class="tagline" style="color:var(--accent)">↪ تحريك حالة الطلب</div>
@@ -539,7 +550,7 @@ function renderSupplierSelf(){
         <div class="code">صنف ${p.code||''}</div><h3>${esc(p.name_ar)}</h3>
         <div class="cost-line">سعر توريدك: ${fmt(p.supplier_price)} د.ع</div>
         ${p.id?`<label class="btn btn-ghost" style="margin-top:8px;cursor:pointer;font-size:13px">📷 تغيير الصورة<input type="file" accept="image/*" style="display:none" onchange="supplierChangeImage(event,'${p.id}')"></label>`:''}
-      </div></div>`).join(''):'<div class="empty">لا منتجات مرتبطة بك بعد. تضيفها إدارة قدح.</div>';
+      </div></div>`).join(''):'<div class="empty">لا منتجات مرتبطة بك بعد. تضيفها إدارة قدّاح.</div>';
 }
 async function supplierChangeImage(e,productId){
   const f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value='';
@@ -670,6 +681,7 @@ async function openOrder(id){
 
   document.getElementById('ord_timeline').innerHTML='<li>جارٍ تحميل السجل...</li>';
   document.getElementById('ordModal').classList.add('show');
+  await loadOrderItems(id);
   await loadOrderTimeline(id);
 }
 
@@ -689,6 +701,27 @@ async function loadOrderTimeline(orderId){
       <div class="tl-meta">${esc(from)} ← ${esc(to)} · <span class="en">${esc(fmtDateTime(h.changed_at))}</span> · ${esc(srcAr[h.changed_by_source]||h.changed_by_source||'')}</div>
     </li>`;
   }).reverse().join('');
+}
+
+async function loadOrderItems(orderId){
+  const box=document.getElementById('ord_items');
+  box.innerHTML='<div class="items-empty">جارٍ تحميل الأصناف...</div>';
+  const {data,error}=await sb.from('order_items')
+    .select('product_name,quantity,unit_price,line_total')
+    .eq('order_id',orderId);
+  if(error){box.innerHTML='<div class="items-empty">تعذّر تحميل الأصناف.</div>';return;}
+  if(!data||!data.length){box.innerHTML='<div class="items-empty">لا أصناف مسجّلة لهذا الطلب.</div>';return;}
+  const itemsTotal=data.reduce((s,it)=>s+(it.line_total||0),0);
+  box.innerHTML=`<table class="items-table"><thead><tr>
+    <th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>مجموع السطر</th></tr></thead><tbody>
+    ${data.map(it=>`<tr>
+      <td>${esc(it.product_name||'')}</td>
+      <td class="num">${fmt(it.quantity)}</td>
+      <td class="num">${fmt(it.unit_price)} د.ع</td>
+      <td class="num">${fmt(it.line_total)} د.ع</td></tr>`).join('')}
+    </tbody><tfoot><tr>
+      <td colspan="3">مجموع الأصناف</td><td class="num">${fmt(itemsTotal)} د.ع</td>
+    </tr></tfoot></table>`;
 }
 
 async function moveOrderStatus(){
@@ -993,14 +1026,14 @@ function buildCatalog(){
   const cat=document.getElementById('c_cat').value;
   const list=products.filter(p=>!cat||p.category===cat).sort((a,b)=>a.price-b.price);
   document.getElementById('catContent').innerHTML=`
-    <div class="cat-head"><h2>قدح للورد</h2><p>${cat||'الكتالوج الكامل'} — ${list.length} صنف</p></div>
+    <div class="cat-head"><h2>قدّاح للورد</h2><p>${cat||'الكتالوج الكامل'} — ${list.length} صنف</p></div>
     <div class="cat-grid">${list.map(p=>`<div class="cat-item"><img src="${p.image_url||PLACEHOLDER}" onerror="this.src='${PLACEHOLDER}'">
       <span class="n">${esc(p.name_ar)}</span><span class="p">${fmt(p.price)} د.ع</span></div>`).join('')}</div>`;
 }
 function copyWhatsapp(){
   const cat=document.getElementById('c_cat').value;
   const list=products.filter(p=>!cat||p.category===cat).sort((a,b)=>a.price-b.price);
-  let txt=`🌸 *قدح للورد*\n${cat||'الكتالوج الكامل'}\n\n`;
+  let txt=`🌸 *قدّاح للورد*\n${cat||'الكتالوج الكامل'}\n\n`;
   list.forEach(p=>txt+=`• ${p.name_ar} — ${fmt(p.price)} د.ع\n`);txt+=`\nللطلب تواصل معنا 💐`;
   navigator.clipboard.writeText(txt).then(()=>toast('تم نسخ النص')).catch(()=>toast('انسخ يدوياً'));
 }
