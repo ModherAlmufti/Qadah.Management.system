@@ -654,7 +654,20 @@ async function openOrder(id){
   const o=orders.find(x=>x.id===id); if(!o)return;
   document.getElementById('ord_title').innerHTML=`الطلب <span class="en">${esc(o.order_code||'')}</span>`;
   const dl=(l,v)=>`<div><div class="dl">${l}</div><div class="dv">${v||'—'}</div></div>`;
+
+  // جلب صاحب الطلب من customers (إن وُجد)
+  let owner=null;
+  if(o.customer_id){
+    const {data:cust}=await sb.from('customers')
+      .select('name,phone,whatsapp_phone,superqi_id').eq('id',o.customer_id).maybeSingle();
+    owner=cust||null;
+  }
+  const ownerName=owner&&owner.name?esc(owner.name):'غير مسجّل';
+  const ownerPhone=owner?(owner.phone||owner.whatsapp_phone||owner.superqi_id||''):'';
+
   document.getElementById('ord_detail').innerHTML=
+    dl('صاحب الطلب',ownerName)+
+    dl('هاتف صاحب الطلب',ownerPhone?`<span class="en">${esc(ownerPhone)}</span>`:'—')+
     dl('المستلم',esc(o.recipient_name))+
     dl('هاتف المستلم',`<span class="en">${esc(o.recipient_phone)}</span>`)+
     dl('عنوان التوصيل',esc(o.delivery_address))+
