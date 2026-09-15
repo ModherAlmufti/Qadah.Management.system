@@ -454,7 +454,8 @@ let currentTab='catalog';
 const can={add:()=>ROLE==='admin',delete:()=>ROLE==='admin',editAll:()=>ROLE==='admin',
   editPrice:()=>ROLE==='admin'||ROLE==='editor',bulk:()=>ROLE==='admin'||ROLE==='editor',
   seeCost:()=>ROLE==='admin'||ROLE==='editor',manageSup:()=>ROLE==='admin'||ROLE==='editor',
-  moveOrder:()=>ROLE==='admin'||ROLE==='editor'};
+  moveOrder:()=>ROLE==='admin'||ROLE==='editor',
+  setFee:()=>ROLE==='admin'||ROLE==='editor'};
 const isSupplier=()=>ROLE==='supplier';
 
 const fmt=n=>Number(n||0).toLocaleString('en-US');
@@ -675,8 +676,8 @@ async function openOrder(id){
     dl('الحالة الحالية',statusChipHTML(o.status))+
     dl('حالة الدفع',payChipHTML(o.payment_status))+
     dl('قيمة الأصناف',fmt(o.subtotal)+' د.ع')+
-    dl('رسوم التوصيل',fmt(o.delivery_fee)+' د.ع')+
-    dl('الإجمالي','<b>'+fmt(o.total)+' د.ع</b>')+
+    feeFieldHTML(o)+
+    dl('الإجمالي','<b id="ord_totalCell">'+fmt(o.total)+' د.ع</b>')+
     dl('القناة',`<span class="en">${esc(o.channel||'')}</span>`)+
     (o.gift_message?dl('رسالة الإهداء',esc(o.gift_message)):'');
 
@@ -735,6 +736,36 @@ async function loadOrderItems(orderId){
     </tbody><tfoot><tr>
       <td colspan="3">مجموع الأصناف</td><td class="num">${fmt(itemsTotal)} د.ع</td>
     </tr></tfoot></table>`;
+}
+
+function feeFieldHTML(o){
+  const eligible=can.setFee()
+    && o.status!=='delivered' && o.status!=='cancelled'
+    && o.payment_status!=='paid';
+  if(!eligible){
+    return `<div><div class="dl">رسوم التوصيل</div><div class="dv">${fmt(o.delivery_fee)} د.ع</div></div>`;
+  }
+  return `<div><div class="dl">رسوم التوصيل</div>
+    <div class="move-row" style="margin-top:2px">
+      <input id="ord_feeInput" type="number" min="0" value="${o.delivery_fee||0}"
+        style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:14px;background:var(--bg);color:var(--ink)">
+      <button class="btn btn-primary" id="ord_feeBtn" style="padding:8px 14px;font-size:13px" onclick="saveDeliveryFee()">حفظ الرسوم</button>
+    </div>
+    <div class="hint" id="ord_feeHint">يُعاد حساب الإجمالي في القاعدة تلقائياً.</div></div>`;
+}
+
+async function saveDeliveryFee(){
+  if(!can.setFee()||!currentOrderId)return;
+  const inp=document.getElementById('ord_feeInput');
+  const fee=parseInt(inp.value,10);
+  if(isNaN(fee)||fee<0){toast('اكتب رسوماً صحيحة (صفر أو أكثر)');return;}
+  const btn=document.getElementById('ord_feeBtn');btn.disabled=true;btn.textContent='جارٍ...';
+  const {error}=await sb.rpc('set_delivery_fee',{p_order_id:currentOrderId,p_fee:fee});
+  btn.disabled=false;btn.textContent='حفظ الرسوم';
+  if(error){toast(error.message||'تعذّر تحديث الرسوم');return;}
+  toast('تم تحديث رسوم التوصيل');
+  await fetchOrders();renderOrders();
+  await openOrder(currentOrderId); // إعادة فتح لتحديث الإجمالي والحقول
 }
 
 async function moveOrderStatus(){
