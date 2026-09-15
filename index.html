@@ -114,6 +114,13 @@
   .timeline li .tl-status{font-weight:700;color:var(--ink)}
   .timeline li .tl-meta{font-size:12px;color:var(--ink-soft);margin-top:2px}
   .timeline li .tl-meta .en{margin:0 3px}
+  .durations-box{background:var(--rose-soft);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:10px}
+  .durations-box .dtotal{font-size:13px;font-weight:800;color:var(--accent);margin-bottom:7px}
+  .durations-box .drow{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-top:1px solid rgba(0,0,0,.05)}
+  .durations-box .drow:first-of-type{border-top:none}
+  .durations-box .drow .dstage{color:var(--ink);font-weight:700}
+  .durations-box .drow .ddur{color:var(--ink-soft);white-space:nowrap}
+  .tl-gap{font-size:11px;color:var(--rose-strong);font-weight:700}
   .move-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .order-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
   .order-detail-grid .dl{font-size:12px;color:var(--ink-soft);font-weight:700}
@@ -167,7 +174,7 @@
 <!-- LOGIN -->
 <div class="login-screen" id="loginScreen">
   <div class="login-card">
-    <div class="brand-mark">✿<img src="icon-cream.png" alt="" onerror="this.remove()"></div>
+    <div class="brand-mark"><img src="icon-cream.png" alt="قدّاح" onerror="this.replaceWith(document.createTextNode('✿'))"></div>
     <div class="latin">QADAH</div>
     <h1>قدّاح للورد</h1>
     <p>نظام الإدارة — سجّل دخولك للمتابعة</p>
@@ -182,7 +189,7 @@
 <!-- APP -->
 <div id="app" class="hidden">
 <header>
-  <div class="brand"><div class="brand-mark">✿<img src="icon-cream.png" alt="" onerror="this.remove()"></div>
+  <div class="brand"><div class="brand-mark"><img src="icon-cream.png" alt="قدّاح" onerror="this.replaceWith(document.createTextNode('✿'))"></div>
     <div><h1>قدّاح للورد<span class="latin">QADAH</span></h1><span class="sub">نظام الإدارة <span class="live-dot" title="متصل مباشرة"></span></span></div></div>
   <div class="whoami"><span id="userName"></span><span class="role-badge" id="roleBadge"></span>
     <button class="btn btn-ghost" onclick="logout()">خروج</button></div>
@@ -347,6 +354,7 @@
 
     <div>
       <h3 style="font-size:15px;color:var(--accent);margin-bottom:6px">السجل الزمني</h3>
+      <div id="ord_durations"></div>
       <ul class="timeline" id="ord_timeline"></ul>
     </div>
   </div>
@@ -699,20 +707,77 @@ async function openOrder(id){
   await loadOrderTimeline(id);
 }
 
+function fmtDuration(ms){
+  if(ms==null||ms<0)return '';
+  const mins=Math.floor(ms/60000);
+  if(mins<1)return 'أقل من دقيقة';
+  const d=Math.floor(mins/1440), h=Math.floor((mins%1440)/60), m=mins%60;
+  const parts=[];
+  if(d)parts.push(d+' يوم');
+  if(h)parts.push(h+' ساعة');
+  if(m&&!d)parts.push(m+' دقيقة'); // نُخفي الدقائق لو المدة بالأيام، تبسيطاً
+  return parts.join(' و') || 'أقل من دقيقة';
+}
+
 async function loadOrderTimeline(orderId){
   const {data,error}=await sb.from('order_status_history')
     .select('old_status,new_status,changed_by_source,changed_at')
     .eq('order_id',orderId).order('changed_at',{ascending:true});
   const ul=document.getElementById('ord_timeline');
+  const durBox=document.getElementById('ord_durations');
+  if(durBox)durBox.innerHTML='';
   if(error){ul.innerHTML='<li>تعذّر تحميل السجل.</li>';return;}
   if(!data||!data.length){ul.innerHTML='<li>لا سجل بعد.</li>';return;}
   const srcAr={dashboard:'من اللوحة',system:'من النظام',boxy:'من التوصيل',qi:'من الدفع'};
-  ul.innerHTML=data.map(h=>{
+
+  // ===== المستوى 2: ملخّص المدد =====
+  // المدة في كل مرحلة = الفرق بين وقت دخولها ووقت الانتقال منها.
+  // آخر مرحلة (الحالية) مفتوحة، فمدتها حتى الآن، إلا إذا كانت delivered/cancelled.
+  if(durBox){
+    const now=Date.now();
+    const firstTime=new Date(data[0].changed_at).getTime();
+    const lastRow=data[data.length-1];
+    const lastStatus=lastRow.new_status;
+    const lastTime=new Date(lastRow.changed_at).getTime();
+    const closed=(lastStatus==='delivered'||lastStatus==='cancelled');
+    const totalMs=(closed?lastTime:now)-firstTime;
+    const totalLabel=closed
+      ? (lastStatus==='delivered'?'الزمن الكلي حتى التسليم':'الزمن الكلي حتى الإلغاء')
+      : 'الزمن الكلي حتى الآن';
+
+    // مدة كل مرحلة: الحالة في كل صف هي new_status، ومدتها حتى الصف التالي (أو الآن للأخيرة)
+    const rows=[];
+    for(let i=0;i<data.length;i++){
+      const stStatus=data[i].new_status;
+      const start=new Date(data[i].changed_at).getTime();
+      const isLast=(i===data.length-1);
+      const end=isLast?(closed?start:now):new Date(data[i+1].changed_at).getTime();
+      // للمرحلة الأخيرة المغلقة (delivered/cancelled) لا مدة بقاء لاحقة
+      if(isLast&&closed)continue;
+      rows.push({stage:STATUS_AR[stStatus]||stStatus, dur:end-start, open:isLast});
+    }
+    durBox.innerHTML=`<div class="durations-box">
+      <div class="dtotal">${totalLabel}: ${fmtDuration(totalMs)}</div>
+      ${rows.map(r=>`<div class="drow">
+        <span class="dstage">${esc(r.stage)}${r.open?' (الحالية)':''}</span>
+        <span class="ddur">${fmtDuration(r.dur)}</span></div>`).join('')}
+    </div>`;
+  }
+
+  // ===== المستوى 1: الخط الزمني مع زمن كل انتقال =====
+  ul.innerHTML=data.map((h,i)=>{
     const to=STATUS_AR[h.new_status]||h.new_status;
     const from=h.old_status?(STATUS_AR[h.old_status]||h.old_status):'إنشاء الطلب';
+    let gap='';
+    if(i>0){
+      const prev=new Date(data[i-1].changed_at).getTime();
+      const cur=new Date(h.changed_at).getTime();
+      gap=`<div class="tl-gap">بعد ${fmtDuration(cur-prev)} من المرحلة السابقة</div>`;
+    }
     return `<li>
       <div class="tl-status">${esc(to)}</div>
       <div class="tl-meta">${esc(from)} ← ${esc(to)} · <span class="en">${esc(fmtDateTime(h.changed_at))}</span> · ${esc(srcAr[h.changed_by_source]||h.changed_by_source||'')}</div>
+      ${gap}
     </li>`;
   }).reverse().join('');
 }
