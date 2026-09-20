@@ -248,10 +248,11 @@
    the store and dashboard. RLS protects everything.
    ============================================================ */
 const SUPABASE_URL = "https://tsqkqoibfxachknfmzjj.supabase.co";
-const SUPABASE_KEY = "PASTE_PUBLISHABLE_ANON_KEY_HERE"; // sb_publishable_...
+const SUPABASE_KEY = "sb_publishable_JyCAQnMnltVq9nESIZjNew_St2FI6Ch"; // sb_publishable_...
 
 const POLL_MS = 30000;
 
+const KEY_MISSING = !SUPABASE_KEY || SUPABASE_KEY.indexOf("PASTE_") === 0;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ---- status dictionaries (display only; DB stays English) ---- */
@@ -279,6 +280,13 @@ el("loginForm").addEventListener("submit", async (e)=>{
   const btn = el("loginBtn");
   const errBox = el("loginError");
   errBox.classList.add("hidden");
+
+  if (KEY_MISSING){
+    errBox.textContent = "المفتاح العلني غير مضبوط في الملف (SUPABASE_KEY). الصق مفتاح anon أولاً.";
+    errBox.classList.remove("hidden");
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> جارٍ الدخول';
   const { error } = await sb.auth.signInWithPassword({
@@ -288,7 +296,18 @@ el("loginForm").addEventListener("submit", async (e)=>{
   btn.disabled = false;
   btn.textContent = "دخول";
   if (error){
-    errBox.textContent = "تعذّر تسجيل الدخول. تأكّد من البريد وكلمة المرور.";
+    const m = (error.message || "").toLowerCase();
+    let ar;
+    if (m.includes("invalid api key") || m.includes("no api key"))
+      ar = "المفتاح العلني خطأ أو ناقص. تأكّد من لصق مفتاح anon الصحيح.";
+    else if (m.includes("email not confirmed"))
+      ar = "بريد هذا الحساب غير مؤكَّد. أكّده من لوحة Supabase (Authentication) ثم أعد المحاولة.";
+    else if (m.includes("invalid login credentials"))
+      ar = "البريد أو كلمة المرور غير صحيحة، أو أن هذا الحساب لا يملك كلمة مرور دخول.";
+    else
+      ar = "تعذّر تسجيل الدخول.";
+    errBox.innerHTML = ar + '<br><span style="opacity:.7;font-size:12px;direction:ltr;display:inline-block">'
+      + escapeHtml(error.message || "") + '</span>';
     errBox.classList.remove("hidden");
     return;
   }
