@@ -163,6 +163,26 @@
   .toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:14px 22px;border-radius:12px;box-shadow:var(--shadow-lg);z-index:80;font-weight:700;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none;max-width:82vw}
   .toast.show{opacity:1;transform:translateY(0)}
 
+  /* ===== المناسبات و"لمن الهدية" ===== */
+  .pick-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .pick-chip{padding:8px 14px;min-height:38px;border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--ink);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:.12s}
+  .pick-chip:hover{border-color:var(--rose-strong)}
+  .pick-chip.on{background:var(--navy);border-color:var(--navy);color:#fdf6ec}
+  .pick-chip.off-tag{opacity:.6;border-style:dashed}
+  .pick-chip:disabled{cursor:not-allowed;opacity:.5}
+  .tag-section{padding:4px 24px 26px}
+  .tag-section .sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .tag-section h2{font-size:20px;color:var(--accent)}
+  .tag-section p.sub{color:var(--ink-soft);font-size:14px}
+  .tag-section .tablewrap{padding:0}
+  .tag-hidden{background:#f1ede6;color:var(--ink-soft)}
+  .tag-active{background:var(--green-soft);color:var(--green)}
+  .order-btns{display:inline-flex;gap:4px}
+  .order-btns button{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;font-size:14px;color:var(--ink)}
+  .order-btns button:disabled{opacity:.35;cursor:default}
+  .badge-chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:12px;background:var(--navy);color:#fdf6ec;align-self:flex-start}
+  .occ-line{display:flex;flex-wrap:wrap;gap:5px}
+  .occ-line .chip{font-size:11px;padding:2px 8px}
   @media(max-width:600px){.row2{grid-template-columns:1fr}.cat-grid{grid-template-columns:1fr}}
   @media print{header,.tabs,.stats,.toolbar,.grid,.tablewrap,.modal-foot,.no-print{display:none!important}
     body{background:#fff}.overlay{position:static;background:none;backdrop-filter:none;padding:0;display:block}
@@ -197,6 +217,7 @@
 
 <div class="tabs">
   <button class="tab active" data-tab="catalog" onclick="switchTab('catalog')">🌸 الكتالوج</button>
+  <button class="tab" data-tab="occasions" onclick="switchTab('occasions')">🎁 المناسبات</button>
   <button class="tab" data-tab="orders" onclick="switchTab('orders')">🧾 الطلبات</button>
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
@@ -209,6 +230,7 @@
   <div class="toolbar">
     <div class="search"><input id="search" type="text" placeholder="ابحث باسم الصنف..." oninput="renderProducts()"></div>
     <select id="catFilter" onchange="renderProducts()"></select>
+    <select id="occFilter" onchange="renderProducts()"></select>
     <select id="sortBy" onchange="renderProducts()">
       <option value="code">ترتيب: رقم الصنف</option><option value="price-asc">السعر: من الأقل</option>
       <option value="price-desc">السعر: من الأعلى</option><option value="name">الاسم أبجدياً</option></select>
@@ -219,6 +241,24 @@
     <button class="btn btn-primary" id="btnAdd" onclick="openProduct()">＋ صنف</button>
   </div>
   <div class="grid" id="grid"></div>
+</section>
+
+<!-- OCCASIONS + RECIPIENTS -->
+<section id="tab-occasions" class="hidden">
+  <div class="tag-section" style="padding-top:20px">
+    <div class="sec-head">
+      <div><h2>المناسبات</h2><p class="sub">تظهر للعملاء في "ماذا تريد أن تقول؟" بالمتجر والميني آب والبوت، بنفس الترتيب هنا. المخفية لا يراها العملاء.</p></div>
+      <button class="btn btn-primary hidden" id="occAdd" onclick="openTag('occasions')">＋ مناسبة</button>
+    </div>
+    <div class="tablewrap" id="occTable"></div>
+  </div>
+  <div class="tag-section">
+    <div class="sec-head">
+      <div><h2>لمن الهدية</h2><p class="sub">تُستخدم في البحث عن الهدية ("لمن الهدية؟") وفي التصفية حسب المستلم.</p></div>
+      <button class="btn btn-primary hidden" id="recAdd" onclick="openTag('recipients')">＋ خيار</button>
+    </div>
+    <div class="tablewrap" id="recTable"></div>
+  </div>
 </section>
 
 <!-- ORDERS -->
@@ -324,12 +364,30 @@
       <div class="field"><label>حالة المنتج</label><select id="p_status"><option>نشط</option><option>متوقف</option><option>موسمي</option></select></div>
       <div class="field"><label>حالة التصوير</label><select id="p_photo"><option value="">—</option><option>لم يُصوّر</option><option>مجدول</option><option>تم التصوير</option></select></div>
     </div>
-    <div class="field"><label>المناسبة (اختياري)</label><select id="p_occasion">
-      <option value="">بدون تحديد</option><option>عام</option><option>عيد ميلاد</option><option>حب ورومانسية</option>
-      <option>زواج وخطوبة</option><option>تهنئة ونجاح</option><option>شفاء عاجل</option><option>عزاء</option></select></div>
+    <div class="field"><label>المناسبات (اختر واحدة أو أكثر)</label><div class="pick-chips" id="p_occasions"></div>
+      <div class="hint">يظهر الصنف للعميل عند اختيار أي من هذه المناسبات. أضف أو عدّل المناسبات من تبويب "المناسبات".</div></div>
+    <div class="field"><label>لمن الهدية</label><div class="pick-chips" id="p_recipients"></div></div>
+    <div class="field"><label>الوسم على بطاقة الصنف</label><select id="p_badge">
+      <option value="">بدون وسم</option><option value="best_seller">الأكثر طلباً</option><option value="new">جديد</option><option value="premium">بريميوم</option></select></div>
     <div class="field"><label>ملاحظات</label><textarea id="p_note"></textarea></div>
   </div>
   <div class="modal-foot"><button class="btn btn-primary" id="p_saveBtn" onclick="saveProduct()">حفظ</button><button class="btn btn-ghost" onclick="close_('prodModal')">إلغاء</button></div>
+</div></div>
+
+<!-- OCCASION / RECIPIENT MODAL -->
+<div class="overlay" id="tagModal"><div class="modal" style="max-width:460px">
+  <div class="modal-head"><h2 id="tagTitle">إضافة مناسبة</h2><button class="x" onclick="close_('tagModal')">&times;</button></div>
+  <div class="modal-body">
+    <input type="hidden" id="t_id"><input type="hidden" id="t_kind">
+    <div class="field"><label>الاسم (عربي)</label><input id="t_nameAr" placeholder="عيد الأم"></div>
+    <div class="field"><label>الاسم (إنجليزي)</label><input id="t_nameEn" class="en" placeholder="Mother's Day"></div>
+    <div class="row2">
+      <div class="field"><label>الأيقونة</label><select id="t_icon"></select></div>
+      <div class="field"><label>الحالة</label><select id="t_active"><option value="1">ظاهرة للعملاء</option><option value="0">مخفية</option></select></div>
+    </div>
+    <div class="hint">"مخفية" تحفظ المناسبة وارتباطها بالأصناف، لكن لا يراها العملاء. مفيدة للمناسبات الموسمية.</div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-primary" id="t_saveBtn" onclick="saveTag()">حفظ</button><button class="btn btn-ghost" onclick="close_('tagModal')">إلغاء</button></div>
 </div></div>
 
 <!-- ORDER DETAIL MODAL -->
@@ -456,6 +514,10 @@ const NEXT_STAGES={
 
 let sb=null, ROLE=null, USERNAME=null, USERID=null;
 let products=[], suppliers=[], drivers=[], costMap={};
+let occasions=[], recipients=[];   // تُدار من تبويب المناسبات
+const BADGE_AR={best_seller:'الأكثر طلباً',new:'جديد',premium:'بريميوم'};
+const TAG_ICONS={heart:'قلب',cake:'كعكة',sparkle:'لمعة',rings:'خواتم',star:'نجمة',leaf:'ورقة',gift:'هدية',dove:'حمامة',
+  flower:'وردة',baby:'طفل',moon:'هلال',crown:'تاج',her:'لها',him:'له',mother:'أم',friend:'صديق',family:'عائلة',briefcase:'عمل'};
 let orders=[], currentOrderId=null;
 let myRow=null, myProducts=[];   // بيانات المورد نفسه ومنتجاته
 let currentTab='catalog';
@@ -463,7 +525,8 @@ const can={add:()=>ROLE==='admin',delete:()=>ROLE==='admin',editAll:()=>ROLE==='
   editPrice:()=>ROLE==='admin'||ROLE==='editor',bulk:()=>ROLE==='admin'||ROLE==='editor',
   seeCost:()=>ROLE==='admin'||ROLE==='editor',manageSup:()=>ROLE==='admin'||ROLE==='editor',
   moveOrder:()=>ROLE==='admin'||ROLE==='editor',
-  setFee:()=>ROLE==='admin'||ROLE==='editor'};
+  setFee:()=>ROLE==='admin'||ROLE==='editor',
+  addTag:()=>ROLE==='admin',deleteTag:()=>ROLE==='admin',editTag:()=>ROLE==='admin'||ROLE==='editor'};
 const isSupplier=()=>ROLE==='supplier';
 
 const fmt=n=>Number(n||0).toLocaleString('en-US');
@@ -520,10 +583,12 @@ async function onSignedIn(){
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
+  document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
+  document.getElementById('recAdd').classList.toggle('hidden',!can.addTag());
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
   fillSelect(document.getElementById('p_cat'),false);
   fillOrderStatusFilter();
-  await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts(),fetchOrders()]);
+  await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts(),fetchOrders(),fetchTags()]);
   if(can.seeCost())await fetchCosts();
   if(ROLE==='admin')await fetchUsers();
   renderAll();subscribe();
@@ -532,7 +597,7 @@ async function onSignedIn(){
 /* واجهة المورد: يرى تبويباً واحداً ببياناته ومنتجاته فقط */
 async function loadSupplierSelf(){
   document.querySelectorAll('.tab').forEach(b=>b.classList.add('hidden'));
-  ['tab-catalog','tab-orders','tab-suppliers','tab-drivers'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  ['tab-catalog','tab-occasions','tab-orders','tab-suppliers','tab-drivers'].forEach(id=>document.getElementById(id).classList.add('hidden'));
   document.getElementById('tab-supplier').classList.remove('hidden');
   const {data:mine}=await sb.from('suppliers').select('*').limit(1);
   myRow=(mine&&mine[0])||null;
@@ -594,6 +659,8 @@ function subscribe(){
     .on('postgres_changes',{event:'*',schema:'public',table:'suppliers'},()=>fetchSuppliers().then(renderSuppliers))
     .on('postgres_changes',{event:'*',schema:'public',table:'drivers'},()=>fetchDrivers().then(renderDrivers))
     .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>fetchOrders().then(renderOrders))
+    .on('postgres_changes',{event:'*',schema:'public',table:'occasions'},()=>fetchTags().then(()=>{renderTags();renderProducts();}))
+    .on('postgres_changes',{event:'*',schema:'public',table:'recipients'},()=>fetchTags().then(()=>{renderTags();renderProducts();}))
     .subscribe();
 }
 
@@ -601,17 +668,24 @@ async function fetchProducts(){const {data}=await sb.from('products').select('*'
 async function fetchSuppliers(){const {data}=await sb.from('suppliers').select('*').order('name');suppliers=data||[];}
 async function fetchDrivers(){const {data}=await sb.from('drivers').select('*').order('name');drivers=data||[];}
 async function fetchCosts(){const {data}=await sb.from('product_costs').select('*');costMap={};(data||[]).forEach(c=>costMap[c.product_id]=c);}
+async function fetchTags(){
+  const [o,r]=await Promise.all([
+    sb.from('occasions').select('*').order('sort_order').order('created_at'),
+    sb.from('recipients').select('*').order('sort_order').order('created_at')]);
+  occasions=o.data||[]; recipients=r.data||[];
+  fillOccFilter();
+}
 async function fetchOrders(){const {data}=await sb.from('orders').select('*').order('created_at',{ascending:false});orders=data||[];}
 
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','orders','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
-  if(t==='catalog')renderProducts();else if(t==='orders')renderOrders();
+  ['catalog','occasions','orders','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  if(t==='catalog')renderProducts();else if(t==='occasions')renderTags();else if(t==='orders')renderOrders();
   else if(t==='suppliers')renderSuppliers();
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
 }
-function renderAll(){renderProducts();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
+function renderAll(){renderProducts();renderTags();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
 
 /* ============================================================
    ORDERS — تتبّع دورة حياة الطلب
@@ -900,7 +974,11 @@ async function changeRole(id,email,newRole,isMe,adminCount){
 function renderProducts(){
   const q=document.getElementById('search').value.trim().toLowerCase();
   const cf=document.getElementById('catFilter').value, sort=document.getElementById('sortBy').value;
-  let list=products.filter(p=>{const okQ=!q||(p.name_ar||'').toLowerCase().includes(q)||(p.name_en||'').toLowerCase().includes(q);return okQ&&(!cf||p.category===cf);});
+  const of=document.getElementById('occFilter').value;
+  let list=products.filter(p=>{const okQ=!q||(p.name_ar||'').toLowerCase().includes(q)||(p.name_en||'').toLowerCase().includes(q);
+    const ids=p.occasion_ids||[];
+    const okO=!of||(of==='__none'?ids.length===0:ids.includes(of));
+    return okQ&&(!cf||p.category===cf)&&okO;});
   if(sort==='price-asc')list.sort((a,b)=>a.price-b.price);
   else if(sort==='price-desc')list.sort((a,b)=>b.price-a.price);
   else if(sort==='name')list.sort((a,b)=>(a.name_ar||'').localeCompare(b.name_ar||'','ar'));
@@ -923,8 +1001,10 @@ function cardHTML(p){
     <span class="star ${p.featured?'on':''}" ${starClick}>★</span>
     <img class="photo" src="${p.image_url||PLACEHOLDER}" alt="${esc(p.name_ar)}" onerror="this.src='${PLACEHOLDER}'">
     <div class="body"><span class="tag">${esc(p.category||'')}</span>
+      ${p.badge&&BADGE_AR[p.badge]?`<span class="badge-chip">${BADGE_AR[p.badge]}</span>`:''}
       <div class="code">صنف ${p.code||''} ${statusChip}</div>
       <h3>${esc(p.name_ar)}</h3>
+      ${occLineHTML(p)}
       <div class="price">${fmt(p.price)} <span style="font-size:13px;font-weight:600">IQD</span></div>
       <div class="meta"><span>الربح <b>${p.margin}%</b></span></div>
       ${costLine}
@@ -957,7 +1037,9 @@ function openProduct(id){
     const p=products.find(x=>x.id===id);
     document.getElementById('prodTitle').textContent='تعديل صنف';
     p_id.value=p.id;p_nameAr.value=p.name_ar;p_nameEn.value=p.name_en||'';p_price.value=p.price;p_margin.value=p.margin;
-    p_cat.value=p.category||'ورد';p_occasion.value=p.occasion||'';p_note.value=p.note||'';
+    p_cat.value=p.category||'ورد';p_note.value=p.note||'';
+    pickSel={occasions:new Set(p.occasion_ids||[]),recipients:new Set(p.recipient_ids||[])};
+    document.getElementById('p_badge').value=p.badge||'';
     document.getElementById('p_preview').src=p.image_url||PLACEHOLDER;
     document.getElementById('p_avSup').value=p.availability_supplier||'';
     document.getElementById('p_avDel').value=p.availability_delivery||'';
@@ -970,11 +1052,13 @@ function openProduct(id){
   }else{
     document.getElementById('prodTitle').textContent='إضافة صنف';
     p_id.value='';p_nameAr.value='';p_nameEn.value='';p_price.value='';p_margin.value='16';p_cat.value='ورد';
-    p_occasion.value='';p_note.value='';document.getElementById('p_preview').src=PLACEHOLDER;
+    p_note.value='';document.getElementById('p_preview').src=PLACEHOLDER;
+    pickSel={occasions:new Set(),recipients:new Set()};document.getElementById('p_badge').value='';
     ['p_avSup','p_avDel','p_photo'].forEach(k=>document.getElementById(k).value='');
     document.getElementById('p_status').value='نشط';document.getElementById('p_supplier').value='';document.getElementById('p_cost').value='';priceModalHadCost=false;
   }
-  ['p_nameAr','p_nameEn','p_cat','p_occasion','p_note','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=editorOnly);
+  ['p_nameAr','p_nameEn','p_cat','p_badge','p_note','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=editorOnly);
+  pickLocked=editorOnly;renderPickers();
   updateProfitHint();
   document.getElementById('prodModal').classList.add('show');
 }
@@ -1065,7 +1149,8 @@ async function saveProduct(){
       let payload;
       if(ROLE==='editor')payload={price,margin:parseInt(p_margin.value,10)||0};
       else{payload={name_ar,name_en:p_nameEn.value.trim(),price,margin:parseInt(p_margin.value,10)||0,
-        category:p_cat.value,occasion:p_occasion.value||null,note:p_note.value.trim()||null,
+        category:p_cat.value,occasion_ids:[...pickSel.occasions],recipient_ids:[...pickSel.recipients],
+        badge:document.getElementById('p_badge').value||null,note:p_note.value.trim()||null,
         availability_supplier:document.getElementById('p_avSup').value||null,
         availability_delivery:document.getElementById('p_avDel').value||null,
         product_status:document.getElementById('p_status').value,
@@ -1081,7 +1166,8 @@ async function saveProduct(){
     }else{
       const nextCode=products.length?Math.max(...products.map(p=>p.code||0))+1:1;
       const {data,error}=await sb.from('products').insert({code:nextCode,name_ar,name_en:p_nameEn.value.trim(),
-        price,margin:parseInt(p_margin.value,10)||0,category:p_cat.value,occasion:p_occasion.value||null,
+        price,margin:parseInt(p_margin.value,10)||0,category:p_cat.value,
+        occasion_ids:[...pickSel.occasions],recipient_ids:[...pickSel.recipients],badge:document.getElementById('p_badge').value||null,
         note:p_note.value.trim()||null,image_url:image_url||PLACEHOLDER,
         availability_supplier:document.getElementById('p_avSup').value||null,
         availability_delivery:document.getElementById('p_avDel').value||null,
@@ -1115,6 +1201,122 @@ async function toggleStar(id){
   if(!can.editAll())return;const p=products.find(x=>x.id===id);
   const {error}=await sb.from('products').update({featured:!p.featured}).eq('id',id);
   if(error){toast('تعذّر التحديث');return;}await fetchProducts();renderProducts();
+}
+
+/* ============================================================
+   المناسبات و"لمن الهدية" — إضافة / تعديل / ترتيب / إخفاء / حذف
+============================================================ */
+let pickSel={occasions:new Set(),recipients:new Set()}, pickLocked=false;
+function tagNames(list,ids){const m={};list.forEach(t=>m[t.id]=t.name_ar);return (ids||[]).map(i=>m[i]).filter(Boolean);}
+function occLineHTML(p){
+  const names=tagNames(occasions,p.occasion_ids).concat(tagNames(recipients,p.recipient_ids));
+  if(!names.length)return '<div class="occ-line"><span class="chip" style="background:#f1ede6;color:var(--ink-soft)">لم تُحدد مناسبة</span></div>';
+  return `<div class="occ-line">${names.map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`;
+}
+function fillOccFilter(){
+  const sel=document.getElementById('occFilter'); if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">كل المناسبات</option><option value="__none">أصناف بلا مناسبة محددة</option>'+
+    occasions.map(o=>`<option value="${o.id}">${esc(o.name_ar)}${o.is_active?'':' (مخفية)'}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+}
+function renderPickers(){
+  [['occasions','p_occasions',occasions],['recipients','p_recipients',recipients]].forEach(([kind,elId,list])=>{
+    const el=document.getElementById(elId);
+    if(!list.length){el.innerHTML='<span class="hint">لا توجد خيارات بعد. أضفها من تبويب "المناسبات".</span>';return;}
+    el.innerHTML=list.map(t=>{
+      const on=pickSel[kind].has(t.id);
+      return `<button type="button" class="pick-chip ${on?'on':''} ${t.is_active?'':'off-tag'}" ${pickLocked?'disabled':''}
+        onclick="togglePick('${kind}','${t.id}')" aria-pressed="${on}">${esc(t.name_ar)}${t.is_active?'':' · مخفية'}</button>`;}).join('');
+  });
+}
+function togglePick(kind,id){if(pickLocked)return;const s=pickSel[kind];s.has(id)?s.delete(id):s.add(id);renderPickers();}
+
+function tagList(kind){return kind==='occasions'?occasions:recipients;}
+function usageCount(kind,id){const col=kind==='occasions'?'occasion_ids':'recipient_ids';return products.filter(p=>(p[col]||[]).includes(id)).length;}
+function renderTags(){
+  if(!document.getElementById('occTable'))return;
+  [['occasions','occTable'],['recipients','recTable']].forEach(([kind,elId])=>{
+    const list=tagList(kind), el=document.getElementById(elId);
+    if(!list.length){el.innerHTML='<div class="empty" style="padding:30px">لا توجد خيارات بعد.</div>';return;}
+    el.innerHTML=`<table class="data"><thead><tr><th>الترتيب</th><th>الاسم</th><th>بالإنجليزي</th><th>الأيقونة</th><th>الأصناف</th><th>الحالة</th><th></th></tr></thead><tbody>
+      ${list.map((t,i)=>`<tr>
+        <td><span class="order-btns">
+          <button ${!can.editTag()||i===0?'disabled':''} onclick="moveTag('${kind}','${t.id}',-1)" aria-label="تحريك للأعلى">▲</button>
+          <button ${!can.editTag()||i===list.length-1?'disabled':''} onclick="moveTag('${kind}','${t.id}',1)" aria-label="تحريك للأسفل">▼</button></span></td>
+        <td><b>${esc(t.name_ar)}</b></td>
+        <td><span class="en">${esc(t.name_en||'')}</span></td>
+        <td>${esc(TAG_ICONS[t.icon]||t.icon||'—')}</td>
+        <td>${usageCount(kind,t.id)}</td>
+        <td>${can.editTag()
+          ?`<button class="ostatus ${t.is_active?'tag-active':'tag-hidden'}" style="border:none;cursor:pointer;font-family:inherit" onclick="toggleTagActive('${kind}','${t.id}')" title="اضغط للتبديل">${t.is_active?'ظاهرة':'مخفية'}</button>`
+          :`<span class="ostatus ${t.is_active?'tag-active':'tag-hidden'}">${t.is_active?'ظاهرة':'مخفية'}</span>`}</td>
+        <td><div class="row-actions">
+          ${can.editTag()?`<button class="edit-b" onclick="openTag('${kind}','${t.id}')">تعديل</button>`:''}
+          ${can.deleteTag()?`<button class="del-b" onclick="removeTag('${kind}','${t.id}')">حذف</button>`:''}</div></td>
+      </tr>`).join('')}</tbody></table>`;
+  });
+}
+function openTag(kind,id){
+  if(id?!can.editTag():!can.addTag())return;
+  const isOcc=kind==='occasions';
+  document.getElementById('t_icon').innerHTML='<option value="">بدون أيقونة</option>'+Object.entries(TAG_ICONS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  t_kind.value=kind;
+  if(id){
+    const t=tagList(kind).find(x=>x.id===id);
+    document.getElementById('tagTitle').textContent=isOcc?'تعديل مناسبة':'تعديل خيار';
+    t_id.value=t.id;t_nameAr.value=t.name_ar;t_nameEn.value=t.name_en||'';
+    t_icon.value=t.icon||'';t_active.value=t.is_active?'1':'0';
+  }else{
+    document.getElementById('tagTitle').textContent=isOcc?'إضافة مناسبة':'إضافة خيار "لمن الهدية"';
+    t_id.value='';t_nameAr.value='';t_nameEn.value='';t_icon.value='';t_active.value='1';
+  }
+  t_nameAr.placeholder=isOcc?'عيد الأم':'لأبي';t_nameEn.placeholder=isOcc?"Mother's Day":'For Dad';
+  document.getElementById('tagModal').classList.add('show');
+}
+async function saveTag(){
+  const kind=t_kind.value, name_ar=t_nameAr.value.trim();
+  if(!name_ar){toast('اكتب الاسم بالعربي');return;}
+  const list=tagList(kind);
+  if(list.some(t=>t.name_ar===name_ar&&t.id!==t_id.value)){toast('هذا الاسم موجود مسبقاً');return;}
+  const payload={name_ar,name_en:t_nameEn.value.trim()||null,icon:t_icon.value||null,is_active:t_active.value==='1'};
+  const btn=document.getElementById('t_saveBtn');btn.disabled=true;btn.textContent='جارٍ الحفظ...';
+  let error;
+  if(t_id.value)({error}=await sb.from(kind).update(payload).eq('id',t_id.value));
+  else{payload.sort_order=(list.reduce((m,t)=>Math.max(m,t.sort_order||0),0))+10;({error}=await sb.from(kind).insert(payload));}
+  btn.disabled=false;btn.textContent='حفظ';
+  if(error){toast(error.message||'تعذّر الحفظ');return;}
+  close_('tagModal');toast('تم الحفظ');
+  await fetchTags();renderTags();renderProducts();
+}
+async function toggleTagActive(kind,id){
+  if(!can.editTag())return;
+  const t=tagList(kind).find(x=>x.id===id);
+  const {error}=await sb.from(kind).update({is_active:!t.is_active}).eq('id',id);
+  if(error){toast('تعذّر التحديث');return;}
+  toast(t.is_active?'أصبحت مخفية عن العملاء':'أصبحت ظاهرة للعملاء');
+  await fetchTags();renderTags();renderProducts();
+}
+async function moveTag(kind,id,dir){
+  if(!can.editTag())return;
+  const list=tagList(kind), i=list.findIndex(x=>x.id===id), j=i+dir;
+  if(i<0||j<0||j>=list.length)return;
+  // إعادة ترقيم الكل بخطوات 10 ثم تبديل الاثنين، حتى لا تتساوى القيم
+  const ordered=list.map(x=>x.id); [ordered[i],ordered[j]]=[ordered[j],ordered[i]];
+  const updates=ordered.map((tid,k)=>({id:tid,sort_order:(k+1)*10})).filter(u=>{const t=list.find(x=>x.id===u.id);return t.sort_order!==u.sort_order;});
+  for(const u of updates){const {error}=await sb.from(kind).update({sort_order:u.sort_order}).eq('id',u.id);if(error){toast('تعذّر تغيير الترتيب');break;}}
+  await fetchTags();renderTags();
+}
+async function removeTag(kind,id){
+  if(!can.deleteTag())return;
+  const t=tagList(kind).find(x=>x.id===id), n=usageCount(kind,id);
+  const msg=n?`"${t.name_ar}" مرتبطة بـ ${n} صنف.\nعند الحذف ستُزال من هذه الأصناف (الأصناف نفسها لا تُحذف).\n\nإذا كانت موسمية، الأفضل إخفاؤها بدل حذفها.\n\nتأكيد الحذف؟`
+               :`حذف "${t.name_ar}"؟`;
+  if(!confirm(msg))return;
+  const {error}=await sb.from(kind).delete().eq('id',id);
+  if(error){toast(error.message||'تعذّر الحذف');return;}
+  toast('تم الحذف');
+  await Promise.all([fetchTags(),fetchProducts()]);renderTags();renderProducts();
 }
 
 /* bulk / catalog builder */
@@ -1294,10 +1496,11 @@ function exportSuppliersCSV(){download('suppliers.csv',['Supplier Name','Shop Ad
 function exportDriversCSV(){download('drivers.csv',['Driver Name','Car Number','Phone Number','Car Type','Model','Status','Notes'],
   drivers.map(d=>[d.name,d.car_number,d.phone,d.car_type,d.model,d.status,d.notes]));}
 function exportProductsCSV(){
-  const head=['الرقم','الاسم عربي','الاسم إنجليزي','السعر','الربح%','النوع','حالة المنتج','المناسبة'];
+  const head=['الرقم','الاسم عربي','الاسم إنجليزي','السعر','الربح%','النوع','حالة المنتج','المناسبات','لمن الهدية','الوسم'];
   const withCost=can.seeCost(); if(withCost){head.push('التكلفة','المورد');}
   const rows=[...products].sort((a,b)=>a.code-b.code).map(p=>{
-    const r=[p.code,p.name_ar,p.name_en,p.price,p.margin,p.category,p.product_status,p.occasion||''];
+    const r=[p.code,p.name_ar,p.name_en,p.price,p.margin,p.category,p.product_status,
+      tagNames(occasions,p.occasion_ids).join(' / '),tagNames(recipients,p.recipient_ids).join(' / '),BADGE_AR[p.badge]||''];
     if(withCost){const c=costMap[p.id]||{};const sup=suppliers.find(s=>s.id===c.supplier_id);r.push(c.supplier_price??'',sup?sup.name:'');}
     return r;});
   download('catalog.csv',head,rows);
