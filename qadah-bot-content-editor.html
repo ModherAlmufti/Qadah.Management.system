@@ -78,6 +78,9 @@
   .menu-del{border:0;background:rgba(122,75,75,.1);color:#7a4b4b;cursor:pointer;width:32px;height:32px;
     border-radius:8px;font-weight:800;font-size:1.05rem;flex:0 0 auto;line-height:1}
   .menu-del:hover{background:rgba(122,75,75,.2)}
+  .menu-move{background:rgba(1,24,58,.07);color:#01183a}
+  .menu-move:hover{background:rgba(1,24,58,.14)}
+  .menu-move:disabled{opacity:.3;cursor:default}
   .btn.add-menu{background:rgba(85,107,47,.12);color:var(--olive);margin-top:12px;padding:9px 15px}
   .btn.add-menu:hover{background:rgba(85,107,47,.2)}
   .node-card{border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-top:10px;background:#fcfbf7}
@@ -213,6 +216,8 @@ const DEFAULTS = {
   welcome:{
     intro:"👋 مرحباً بك في قدّاح للورد.\nنسعد بخدمتك وتوصيل أجمل الورود لأحبائك.\nمن فضلك اختر ما تريد:",
     items:[
+      {id:"m0", emoji:"💐", label:"ماذا تريد أن تقول؟", action:"builtin", builtin:"occasions"},
+      {id:"m4", emoji:"🎁", label:"ساعدني أختار", action:"builtin", builtin:"finder"},
       {id:"m1", emoji:"🌹", label:"تصفح الورود", action:"builtin", builtin:"browse"},
       {id:"m2", emoji:"🎁", label:"عروض خاصة", action:"builtin", builtin:"offers"},
       {id:"m3", emoji:"📦", label:"تتبع طلبي", action:"builtin", builtin:"track"}
@@ -494,7 +499,12 @@ function nodeCard(arr, idx, depth, rerender){
   const lab=menuInput(it.label,"",v=>{it.label=v; refreshPreview();},"اسم الخيار");
   const del=document.createElement("button"); del.type="button"; del.className="menu-del"; del.textContent="×"; del.title="حذف الخيار";
   del.addEventListener("click",()=>{ arr.splice(idx,1); rerender(); refreshPreview(); });
-  row.append(num,em,lab,del); card.appendChild(row);
+  // ترتيب الخيار: ▲ للأعلى، ▼ للأسفل
+  const mv=(dir)=>{ const j=idx+dir; if(j<0||j>=arr.length) return; [arr[idx],arr[j]]=[arr[j],arr[idx]]; rerender(); refreshPreview(); };
+  const up=document.createElement("button"); up.type="button"; up.className="menu-del menu-move"; up.textContent="▲"; up.title="تحريك للأعلى"; up.disabled=idx===0;
+  const dn=document.createElement("button"); dn.type="button"; dn.className="menu-del menu-move"; dn.textContent="▼"; dn.title="تحريك للأسفل"; dn.disabled=idx===arr.length-1;
+  up.addEventListener("click",()=>mv(-1)); dn.addEventListener("click",()=>mv(1));
+  row.append(num,em,lab,up,dn,del); card.appendChild(row);
 
   const actWrap=document.createElement("div"); actWrap.className="node-action";
   const al=document.createElement("span"); al.className="node-lab"; al.textContent="نوع الإجراء:";
@@ -521,7 +531,7 @@ function nodeCard(arr, idx, depth, rerender){
     const w=document.createElement("div"); w.className="node-action";
     const bl=document.createElement("span"); bl.className="node-lab"; bl.textContent="الوظيفة:";
     const b=document.createElement("select"); b.className="txt sel";
-    [["browse","تصفح الورود"],["offers","العروض"],["track","تتبع الطلب"]].forEach(([v,t])=>{
+    [["occasions","ماذا تريد أن تقول؟ (المناسبات)"],["finder","ساعدني أختار"],["browse","تصفح الورود"],["offers","العروض"],["track","تتبع الطلب"]].forEach(([v,t])=>{
       const o=document.createElement("option"); o.value=v; o.textContent=t; if((it.builtin||"browse")===v) o.selected=true; b.appendChild(o);
     });
     b.addEventListener("change",()=>{ it.builtin=b.value; });
