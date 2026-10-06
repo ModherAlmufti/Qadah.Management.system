@@ -484,6 +484,17 @@
   </div>
 </div></div>
 
+<!-- RESET PASSWORD MODAL (يظهر عند فتح رابط استعادة كلمة المرور) -->
+<div class="overlay" id="resetModal" style="z-index:200"><div class="modal" style="max-width:420px">
+  <div class="modal-head"><h2>تعيين كلمة مرور جديدة</h2></div>
+  <div class="modal-body">
+    <div class="field"><label>كلمة المرور الجديدة</label><input id="rs_pass" type="password" autocomplete="new-password" placeholder="8 أحرف على الأقل"></div>
+    <div class="field"><label>تأكيد كلمة المرور</label><input id="rs_pass2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')saveNewPassword()"></div>
+    <div class="login-msg err" id="rs_msg"></div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-primary" id="rs_btn" onclick="saveNewPassword()">حفظ كلمة المرور</button></div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -541,6 +552,9 @@ function fmtDate(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return esc(v
   return d.toLocaleDateString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit'});}
 
 /* boot */
+/* يُقرأ قبل createClient لأن Supabase يمسح الـ hash من الرابط بعد إنشائه */
+const IS_RECOVERY=location.hash.includes('type=recovery');
+const RECOVERY_EXPIRED=location.hash.includes('error_code=otp_expired');
 function notConfigured(){return SUPABASE_URL.includes('YOUR-PROJECT')||SUPABASE_ANON_KEY.includes('YOUR-ANON');}
 (async function(){
   if(notConfigured()){
@@ -549,9 +563,38 @@ function notConfigured(){return SUPABASE_URL.includes('YOUR-PROJECT')||SUPABASE_
     ['lg_email','lg_pass','lg_btn'].forEach(id=>document.getElementById(id).disabled=true);return;
   }
   sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  sb.auth.onAuthStateChange((event)=>{if(event==='PASSWORD_RECOVERY')showResetForm();});
+  if(RECOVERY_EXPIRED){
+    history.replaceState(null,'',location.pathname);
+    setMsg('رابط استعادة كلمة المرور منتهي أو مستخدم من قبل. اطلب رابطاً جديداً.');
+  }
   const {data:{session}}=await sb.auth.getSession();
+  if(IS_RECOVERY&&session){showResetForm();return;}   // لا ندخل اللوحة قبل تعيين كلمة المرور
   if(session)await onSignedIn();
 })();
+
+/* استعادة كلمة المرور */
+function showResetForm(){
+  const m=document.getElementById('resetModal');
+  if(m.classList.contains('show'))return;
+  m.classList.add('show');
+  setTimeout(()=>document.getElementById('rs_pass').focus(),50);
+}
+async function saveNewPassword(){
+  const p1=document.getElementById('rs_pass').value, p2=document.getElementById('rs_pass2').value;
+  const msg=document.getElementById('rs_msg');
+  msg.className='login-msg err';
+  if(p1.length<8){msg.textContent='كلمة المرور لازم تكون 8 أحرف على الأقل';return;}
+  if(p1!==p2){msg.textContent='كلمتا المرور غير متطابقتين';return;}
+  const btn=document.getElementById('rs_btn');btn.disabled=true;btn.textContent='جارٍ الحفظ...';
+  const {error}=await sb.auth.updateUser({password:p1});
+  btn.disabled=false;btn.textContent='حفظ كلمة المرور';
+  if(error){msg.textContent=error.message;return;}
+  history.replaceState(null,'',location.pathname);
+  close_('resetModal');
+  toast('تم تغيير كلمة المرور');
+  if(document.getElementById('app').classList.contains('hidden'))await onSignedIn();
+}
 
 async function doLogin(){
   const email=document.getElementById('lg_email').value.trim(), pass=document.getElementById('lg_pass').value;
