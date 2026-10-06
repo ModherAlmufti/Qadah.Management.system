@@ -126,6 +126,8 @@
   .sbadge.pending{background:var(--rose-soft); color:var(--rose-strong)}
   .sbadge.confirmed{background:var(--ok-soft); color:var(--ok)}
   .sbadge.unavailable{background:var(--bad-soft); color:var(--bad)}
+  .sbadge.prepared{background:rgba(1,24,58,.08); color:var(--navy)}
+  .sbadge.picked_up{background:var(--navy); color:#fff}
 
   /* action buttons per line */
   .act{
@@ -137,6 +139,9 @@
   .act:disabled{opacity:.5; cursor:not-allowed}
   .act.ok.on{background:var(--ok); border-color:var(--ok); color:#fff}
   .act.bad.on{background:var(--bad); border-color:var(--bad); color:#fff}
+  /* forward "next step" action (prepared / picked_up): filled navy */
+  .act.go{background:var(--navy); border-color:var(--navy); color:#fff}
+  .act.go:hover:not(:disabled){background:var(--navy-dark); border-color:var(--navy-dark)}
   .act.busy{opacity:.6; pointer-events:none}
 
   .order-foot{padding:12px 16px; border-top:1px solid var(--line); background:#fffefb}
@@ -261,10 +266,11 @@ const ORDER_STATUS_AR = {
   prepared:"جُهّز", picked_up:"مع التوصيل", delivered:"تم التوصيل", cancelled:"ملغى"
 };
 const SUPPLIER_STATUS_AR = {
-  pending:"بانتظار التأكيد", confirmed:"مؤكّد", unavailable:"غير متوفّر"
+  pending:"بانتظار التأكيد", confirmed:"مؤكّد", unavailable:"غير متوفّر",
+  prepared:"جُهّز", picked_up:"مع التوصيل"
 };
-// order states where the supplier can still act on lines
-const ACTIONABLE = ["pending","sent_to_supplier"];
+// orders where the supplier can no longer act on their lines
+const LOCKED = ["delivered","cancelled"];
 const orderBadgeClass = s =>
   s==="cancelled" ? "bad" : (["confirmed","prepared","picked_up","delivered"].includes(s) ? "good" : "");
 
@@ -384,11 +390,11 @@ function render(rows){
   }
   const orders = [...map.values()];
 
-  // summary
-  const pendingCount = rows.filter(r => r.supplier_status === "pending").length;
+  // summary: orders that are mine, + my lines still awaiting an action from me
+  const myActionable = rows.filter(r => ["pending","confirmed","prepared"].includes(r.supplier_status)).length;
   el("summary").innerHTML =
     '<div class="stat"><div class="num">'+orders.length+'</div><div class="lbl">طلب يخصّك</div></div>'+
-    '<div class="stat attention"><div class="num">'+pendingCount+'</div><div class="lbl">صنف بانتظار تأكيدك</div></div>';
+    '<div class="stat attention"><div class="num">'+myActionable+'</div><div class="lbl">صنف ينتظر إجراءً منك</div></div>';
 
   if (!orders.length){
     el("list").innerHTML =
@@ -402,21 +408,26 @@ function render(rows){
 
 function renderOrder(o){
   const h = o.head;
-  const canAct = ACTIONABLE.includes(h.order_status);
+  const locked = LOCKED.includes(h.order_status);
   const delivery =
     'التسليم: <b>'+ (h.delivery_date || "غير محدّد") +'</b>' +
     (h.delivery_slot ? ' · '+escapeHtml(h.delivery_slot) : '');
 
-  const linesHtml = o.lines.map(l => renderLine(l, canAct)).join("");
+  const linesHtml = o.lines.map(l => renderLine(l, locked)).join("");
 
-  const pendingInOrder = o.lines.filter(l => l.supplier_status === "pending").length;
+  // one contextual bulk button, matching the earliest open stage of this order's lines
   let foot = "";
-  if (canAct && pendingInOrder > 0){
-    foot =
-      '<div class="order-foot"><button class="btn wide small" '+
-      'onclick="confirmAll(\''+h.order_id+'\')">تأكيد كل الأصناف المتبقية ('+pendingInOrder+')</button></div>';
-  } else if (!canAct){
-    foot = '<div class="order-foot"><p class="foot-note">هذا الطلب لم يعد يقبل تعديلاً على التوفّر.</p></div>';
+  if (locked){
+    foot = '<div class="order-foot"><p class="foot-note">هذا الطلب لم يعد يقبل تعديلاً.</p></div>';
+  } else {
+    const n = st => o.lines.filter(l => l.supplier_status === st).length;
+    if (n("pending") > 0){
+      foot = bulkBtn(h.order_id, "pending", "confirmed", "تأكيد كل الأصناف المتبقية ("+n("pending")+")");
+    } else if (n("confirmed") > 0){
+      foot = bulkBtn(h.order_id, "confirmed", "prepared", "تجهيز كل الأصناف المؤكّدة ("+n("confirmed")+")");
+    } else if (n("prepared") > 0){
+      foot = bulkBtn(h.order_id, "prepared", "picked_up", "إخراج كل الأصناف مع التوصيل ("+n("prepared")+")");
+    }
   }
 
   return (
@@ -434,28 +445,44 @@ function renderOrder(o){
   );
 }
 
-function renderLine(l, canAct){
-  const st = l.supplier_status;
-  const chip = '<span class="sbadge '+st+'">'+SUPPLIER_STATUS_AR[st]+'</span>';
+function bulkBtn(orderId, from, to, label){
+  return '<div class="order-foot"><button class="btn wide small" '+
+    'onclick="advanceAll(\''+orderId+'\',\''+from+'\',\''+to+'\')">'+label+'</button></div>';
+}
 
-  let actions;
-  if (canAct){
-    actions =
-      '<div class="actions" data-line="'+l.line_id+'">'+
-        '<button class="act ok'+(st==="confirmed"?" on":"")+'" '+
-          'onclick="setLine(\''+l.line_id+'\',\'confirmed\',this)">مؤكّد</button>'+
-        '<button class="act bad'+(st==="unavailable"?" on":"")+'" '+
-          'onclick="setLine(\''+l.line_id+'\',\'unavailable\',this)">غير متوفّر</button>'+
-      '</div>';
-  } else {
-    actions = chip; // read-only: show the frozen state
+function renderLine(l, locked){
+  const st = l.supplier_status;
+  const chip = '<span class="sbadge '+st+'">'+(SUPPLIER_STATUS_AR[st] || st)+'</span>';
+  const lid = l.line_id;
+
+  // stage-appropriate action buttons; terminal/locked lines show the chip only
+  let actions = "";
+  if (!locked){
+    if (st === "pending"){
+      actions =
+        '<div class="actions" data-line="'+lid+'">'+
+          '<button class="act ok" onclick="setLine(\''+lid+'\',\'confirmed\',this)">مؤكّد</button>'+
+          '<button class="act bad" onclick="setLine(\''+lid+'\',\'unavailable\',this)">غير متوفّر</button>'+
+        '</div>';
+    } else if (st === "confirmed"){
+      actions =
+        '<div class="actions" data-line="'+lid+'">'+
+          '<button class="act go" onclick="setLine(\''+lid+'\',\'prepared\',this)">جهّزت أصنافي</button>'+
+          '<button class="act bad" onclick="setLine(\''+lid+'\',\'unavailable\',this)">غير متوفّر</button>'+
+        '</div>';
+    } else if (st === "prepared"){
+      actions =
+        '<div class="actions" data-line="'+lid+'">'+
+          '<button class="act go" onclick="setLine(\''+lid+'\',\'picked_up\',this)">خرج مع التوصيل</button>'+
+        '</div>';
+    }
   }
 
   return (
     '<div class="line">'+
       '<span class="pname grow">'+escapeHtml(l.product_name || "")+'</span>'+
       '<span class="qty">×'+ (l.quantity ?? 1) +'</span>'+
-      (canAct ? chip : "")+
+      chip+
       actions+
     '</div>'
   );
@@ -466,32 +493,33 @@ function renderLine(l, canAct){
    ============================================================ */
 async function setLine(lineId, status, btn){
   const group = btn.closest(".actions");
-  group.querySelectorAll(".act").forEach(b => b.classList.add("busy"));
+  if (group) group.querySelectorAll(".act").forEach(b => b.classList.add("busy"));
   const { error } = await sb.rpc("confirm_order_line", { p_line_id: lineId, p_new_status: status });
   if (error){
-    group.querySelectorAll(".act").forEach(b => b.classList.remove("busy"));
+    if (group) group.querySelectorAll(".act").forEach(b => b.classList.remove("busy"));
     alert("تعذّر حفظ الحالة. حاول مرة أخرى.");
     return;
   }
   await loadLines(false); // re-read so order status / promotion reflect
 }
 
-async function confirmAll(orderId){
+// advance every line of an order that is at `from` to `to` (bulk, one stage)
+async function advanceAll(orderId, from, to){
   const card = document.querySelector('.order[data-order="'+orderId+'"]');
   const foot = card ? card.querySelector(".order-foot button") : null;
-  // gather this order's pending lines from the current view
+
   const { data, error } = await sb
     .from("supplier_order_lines")
     .select("line_id,supplier_status")
     .eq("order_id", orderId);
   if (error){ alert("تعذّر التحديث. حاول مرة أخرى."); return; }
-  const pending = (data||[]).filter(r => r.supplier_status === "pending");
-  if (!pending.length){ await loadLines(false); return; }
+  const targets = (data||[]).filter(r => r.supplier_status === from);
+  if (!targets.length){ await loadLines(false); return; }
 
-  if (foot){ foot.disabled = true; foot.innerHTML = '<span class="spin"></span> جارٍ التأكيد'; }
-  for (const r of pending){
-    const { error:e } = await sb.rpc("confirm_order_line", { p_line_id:r.line_id, p_new_status:"confirmed" });
-    if (e){ alert("تعذّر تأكيد أحد الأصناف. أُعيد التحميل."); break; }
+  if (foot){ foot.disabled = true; foot.innerHTML = '<span class="spin"></span> جارٍ الحفظ'; }
+  for (const r of targets){
+    const { error:e } = await sb.rpc("confirm_order_line", { p_line_id:r.line_id, p_new_status:to });
+    if (e){ alert("تعذّر تحديث أحد الأصناف. أُعيد التحميل."); break; }
   }
   await loadLines(false);
 }
