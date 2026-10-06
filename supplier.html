@@ -172,6 +172,15 @@
     background:var(--bad-soft); color:var(--bad); border:1px solid #eecac6;
     border-radius:11px; padding:11px 13px; font-size:13px; font-weight:500; margin-bottom:14px;
   }
+  .info-box{
+    background:var(--ok-soft); color:var(--ok); border:1px solid #cfe3d6;
+    border-radius:11px; padding:11px 13px; font-size:13px; font-weight:500; margin-bottom:14px;
+  }
+  .link-btn{
+    background:none; border:none; color:var(--navy); font-weight:700; font-size:13px;
+    padding:6px 0 0; margin:10px auto 0; display:block; text-decoration:underline;
+  }
+  .link-btn:disabled{opacity:.5; cursor:not-allowed}
   .spin{
     width:15px; height:15px; border:2px solid rgba(255,255,255,.5); border-top-color:#fff;
     border-radius:50%; display:inline-block; vertical-align:-2px; animation:sp .7s linear infinite;
@@ -195,6 +204,7 @@
     <h1>بوابة المورّد</h1>
     <p class="sub">سجّل الدخول لعرض طلباتك وتأكيد توفّر أصنافك</p>
     <div id="loginError" class="error-box hidden"></div>
+    <div id="loginInfo" class="info-box hidden"></div>
     <div class="field">
       <label for="email">البريد الإلكتروني</label>
       <input id="email" type="email" inputmode="email" required autocomplete="username">
@@ -204,6 +214,29 @@
       <input id="password" type="password" required autocomplete="current-password">
     </div>
     <button class="btn wide" id="loginBtn" type="submit">دخول</button>
+    <button class="link-btn" id="forgotBtn" type="button" onclick="forgotPassword()">نسيت كلمة المرور؟</button>
+  </form>
+</div>
+
+<!-- ==================== RESET PASSWORD ==================== -->
+<div id="resetView" class="login-wrap hidden">
+  <form class="login" id="resetForm">
+    <div class="brand">
+      <img class="logo" src="icon-cream.png" alt="قدّاح"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'logo',textContent:'✿'}))">
+    </div>
+    <h1>تعيين كلمة مرور جديدة</h1>
+    <p class="sub">اختر كلمة مرور جديدة لحسابك</p>
+    <div id="resetError" class="error-box hidden"></div>
+    <div class="field">
+      <label for="newPass">كلمة المرور الجديدة</label>
+      <input id="newPass" type="password" required autocomplete="new-password" placeholder="8 أحرف على الأقل">
+    </div>
+    <div class="field">
+      <label for="newPass2">تأكيد كلمة المرور</label>
+      <input id="newPass2" type="password" required autocomplete="new-password">
+    </div>
+    <button class="btn wide" id="resetBtn" type="submit">حفظ كلمة المرور</button>
   </form>
 </div>
 
@@ -258,7 +291,11 @@ const SUPABASE_KEY = "sb_publishable_JyCAQnMnltVq9nESIZjNew_St2FI6Ch"; // sb_pub
 const POLL_MS = 30000;
 
 const KEY_MISSING = !SUPABASE_KEY || SUPABASE_KEY.indexOf("PASTE_") === 0;
+// read before createClient: Supabase clears the URL hash once the client starts
+const IS_RECOVERY = location.hash.includes("type=recovery");
+const RECOVERY_EXPIRED = location.hash.includes("error_code=otp_expired");
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+sb.auth.onAuthStateChange((event)=>{ if (event === "PASSWORD_RECOVERY") showResetView(); });
 
 /* ---- status dictionaries (display only; DB stays English) ---- */
 const ORDER_STATUS_AR = {
@@ -544,8 +581,74 @@ function escapeHtml(s){
     ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
 
+/* ============================================================
+   PASSWORD RECOVERY
+   ============================================================ */
+function showResetView(){
+  stopPolling();
+  ["loginView","denyView","appView"].forEach(id => el(id).classList.add("hidden"));
+  el("resetView").classList.remove("hidden");
+  setTimeout(()=>el("newPass").focus(), 50);
+}
+
+el("resetForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const p1 = el("newPass").value, p2 = el("newPass2").value;
+  const errBox = el("resetError");
+  errBox.classList.add("hidden");
+  const fail = t => { errBox.textContent = t; errBox.classList.remove("hidden"); };
+  if (p1.length < 8) return fail("كلمة المرور لازم تكون 8 أحرف على الأقل.");
+  if (p1 !== p2) return fail("كلمتا المرور غير متطابقتين.");
+
+  const btn = el("resetBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> جارٍ الحفظ';
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  btn.disabled = false;
+  btn.textContent = "حفظ كلمة المرور";
+  if (error) return fail(error.message || "تعذّر حفظ كلمة المرور.");
+
+  history.replaceState(null, "", location.pathname);
+  el("resetView").classList.add("hidden");
+  await afterLogin();
+});
+
+async function forgotPassword(){
+  const errBox = el("loginError"), info = el("loginInfo");
+  errBox.classList.add("hidden"); info.classList.add("hidden");
+  const email = el("email").value.trim();
+  if (!email){
+    errBox.textContent = "اكتب بريدك الإلكتروني أولاً، ثم اضغط \"نسيت كلمة المرور؟\".";
+    errBox.classList.remove("hidden");
+    el("email").focus();
+    return;
+  }
+  const btn = el("forgotBtn");
+  btn.disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: location.origin + location.pathname   // يرجع لهذه الصفحة نفسها
+  });
+  btn.disabled = false;
+  if (error){
+    const m = (error.message || "").toLowerCase();
+    errBox.textContent = m.includes("rate limit")
+      ? "طلبات كثيرة خلال وقت قصير. انتظر قليلاً ثم حاول مرة أخرى."
+      : "تعذّر إرسال رابط الاستعادة.";
+    errBox.classList.remove("hidden");
+    return;
+  }
+  info.textContent = "إذا كان البريد مسجّلاً، سيصلك رابط لتعيين كلمة مرور جديدة. تحقّق من البريد (والـ Spam).";
+  info.classList.remove("hidden");
+}
+
 (async function init(){
+  if (RECOVERY_EXPIRED){
+    history.replaceState(null, "", location.pathname);
+    el("loginError").textContent = "رابط استعادة كلمة المرور منتهي أو مستخدم من قبل. اطلب رابطاً جديداً.";
+    el("loginError").classList.remove("hidden");
+  }
   const { data:{ session } } = await sb.auth.getSession();
+  if (IS_RECOVERY && session){ showResetView(); return; }   // no dashboard before the new password is set
   if (session) await afterLogin();
 })();
 </script>
