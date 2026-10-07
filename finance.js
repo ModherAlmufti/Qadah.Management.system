@@ -58,8 +58,8 @@
 
   /* ---------- styles (brand tokens with fallbacks) ---------- */
   var CSS = [
-    '.fin{--fn:var(--navy,#01183a);--fr:var(--rose-strong,#c98578);--frs:var(--rose-soft,#f4e4df);--fc:var(--card,#fffdfa);',
-    '--fi:var(--ink,#24303c);--fm:var(--muted,#8f8781);--fl:var(--line,#ece2d4);--fok:#2e7d5b;--fbad:#b23b34;',
+    '.fin{--fn:var(--navy,#01183a);--fr:var(--rose-strong,#c98578);--frs:var(--rose-soft,#f4e4df);--fc:var(--surface,#fffdfa);',
+    '--fi:var(--ink,#24303c);--fm:var(--ink-soft,#8f8781);--fl:var(--line,#ece2d4);--fok:#2e7d5b;--fbad:#b23b34;',
     'display:flex;flex-direction:column;gap:16px;color:var(--fi);font-family:inherit}',
     '.fin-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}',
     '.fin-head h2{margin:0;font-size:22px;font-weight:800;color:var(--fn)}',
@@ -77,7 +77,7 @@
     '.fin-kpi .v{font-size:22px;font-weight:800;direction:ltr;text-align:right;font-variant-numeric:tabular-nums}',
     '.fin-kpi .s{font-size:12px;color:var(--fm)}',
     '.fin-kpi.hero{background:var(--fn);border-color:var(--fn);color:#fbf6ee}.fin-kpi.hero .l,.fin-kpi.hero .s{color:#fbf6ee;opacity:.8}',
-    '.fin .pos{color:var(--fok)}.fin .neg{color:var(--fbad)}.fin-kpi.hero .neg{color:#ffb4ac}',
+    '.fin .pos{color:var(--fok)}.fin .neg{color:var(--fbad)}.fin .warn{color:#8a5a00}.fin-kpi.hero .neg{color:#ffb4ac}',
     '.fin-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:12px}',
     '@media(max-width:900px){.fin-grid{grid-template-columns:1fr}}',
     '.fin-card{background:var(--fc);border:1px solid var(--fl);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}',
@@ -137,7 +137,7 @@
       '<div class="fin-kpis"></div>' +
       '<div class="fin-grid">' +
       '<div class="fin-card"><h3>المصاريف حسب الفئة</h3><div class="fin-cats"></div></div>' +
-      '<div class="fin-card"><h3>شهرياً</h3><p class="fin-hint">الإيرادات من جدول الطلبات (بدون الملغاة). الصافي = المدفوع فعلاً ناقص المصاريف.</p><div class="fin-tw fin-monthly"></div></div>' +
+      '<div class="fin-card"><h3>شهرياً</h3><p class="fin-hint">إيراد قدّاح = سعر البيع ناقص سعر التوريد + رسوم التوصيل. "المحقق" من الطلبات المدفوعة فقط. دفعات الموردين لا تُطرح مرة ثانية لأنها داخل كلفة الورد.</p><div class="fin-tw fin-monthly"></div></div>' +
       '</div>' +
       '<div class="fin-card"><h3>سجل المصاريف</h3>' +
       '<div class="fin-filters"><input type="search" class="fin-q" placeholder="بحث في البند أو الدافع أو الملاحظة">' +
@@ -183,19 +183,25 @@
 
   function renderKpis() {
     var funding = sum(S.funding, 'amount_iqd');
-    var spent = sum(S.expenses, 'amount_iqd');
-    var balance = funding - spent;
+    var allSpent = sum(S.expenses, 'amount_iqd');
+    var cashIn = sum(S.monthly, 'paid_cash_in');
+    var cash = funding + cashIn - allSpent;
+    var revenue = sum(S.monthly, 'revenue');
+    var paidRevenue = sum(S.monthly, 'paid_revenue');
+    var opex = sum(S.monthly, 'operating_expenses');
+    var supPaid = sum(S.monthly, 'supplier_payments');
+    var net = sum(S.monthly, 'net_profit');
+    var sales = sum(S.monthly, 'sales_total');
     var orders = sum(S.monthly, 'orders_count');
-    var ordersTotal = sum(S.monthly, 'orders_total');
-    var paid = sum(S.monthly, 'paid_total');
+    var missing = sum(S.monthly, 'missing_cost_lines');
     $('.fin-kpis').innerHTML =
-      kpi('الرصيد المتبقي', fmt(balance), funding ? (balance < 0 ? 'المصروف أكثر من التمويل' : 'التمويل ناقص المصاريف') : 'لم يُسجَّل تمويل بعد', 'hero', balance < 0 ? 'neg' : '') +
-      kpi('التمويل الوارد', fmt(funding), S.funding.length + ' دفعة') +
-      kpi('إجمالي المصاريف', fmt(spent), S.expenses.length + ' حركة') +
-      kpi('قيمة الطلبات', fmt(ordersTotal), orders + ' طلب · المدفوع ' + fmt(paid));
+      kpi('صافي الربح المحقق', fmt(net), 'الإيراد المحقق ' + fmt(paidRevenue) + ' ناقص المصاريف التشغيلية', 'hero', net < 0 ? 'neg' : '') +
+      kpi('إيراد قدّاح من الطلبات', fmt(revenue), orders + ' طلب بمبيعات ' + fmt(sales) + (missing ? ' · ' + missing + ' صنف بلا تكلفة' : ''), '', '', missing ? 'warn' : '') +
+      kpi('المصاريف التشغيلية', fmt(opex), supPaid ? 'ودفعات موردين ' + fmt(supPaid) + ' (خارج الحساب)' : 'بدون دفعات الموردين') +
+      kpi('الرصيد النقدي', fmt(cash), funding ? 'التمويل ' + fmt(funding) + ' + المحصّل − كل المدفوعات' : 'لم يُسجَّل تمويل بعد', '', cash < 0 ? 'neg' : '');
   }
-  function kpi(l, v, s, cls, vcls) {
-    return '<div class="fin-kpi ' + (cls || '') + '"><span class="l">' + esc(l) + '</span><span class="v ' + (vcls || '') + '">' + esc(v) + '</span><span class="s">' + esc(s) + '</span></div>';
+  function kpi(l, v, s, cls, vcls, scls) {
+    return '<div class="fin-kpi ' + (cls || '') + '"><span class="l">' + esc(l) + '</span><span class="v ' + (vcls || '') + '">' + esc(v) + '</span><span class="s ' + (scls || '') + '">' + esc(s) + '</span></div>';
   }
 
   function renderCats() {
@@ -213,12 +219,13 @@
   function renderMonthly() {
     var rows = S.monthly.slice().sort(function (a, b) { return a.month < b.month ? 1 : -1; });
     if (!rows.length) { $('.fin-monthly').innerHTML = '<div class="fin-empty">لا توجد بيانات بعد</div>'; return; }
-    var h = '<table><thead><tr><th>الشهر</th><th class="n">الطلبات</th><th class="n">قيمة الطلبات</th><th class="n">المدفوع</th><th class="n">المصاريف</th><th class="n">التمويل</th><th class="n">الصافي</th></tr></thead><tbody>';
+    var h = '<table><thead><tr><th>الشهر</th><th class="n">الطلبات</th><th class="n">المبيعات</th><th class="n">كلفة الورد</th><th class="n">إيراد قدّاح</th><th class="n">المحقق</th><th class="n">المصاريف التشغيلية</th><th class="n">صافي الربح</th></tr></thead><tbody>';
     rows.forEach(function (r) {
-      var net = Number(r.net_cash);
-      h += '<tr><td>' + esc(monthLabel(monthKey(r.month))) + '</td><td class="n">' + r.orders_count + '</td><td class="n">' + fmt(r.orders_total) +
-        '</td><td class="n">' + fmt(r.paid_total) + '</td><td class="n">' + fmt(r.expenses_total) + '</td><td class="n">' + fmt(r.funding_total) +
-        '</td><td class="n ' + (net < 0 ? 'neg' : 'pos') + '">' + fmt(net) + '</td></tr>';
+      var net = Number(r.net_profit);
+      var miss = Number(r.missing_cost_lines) ? '<span class="d warn">' + r.missing_cost_lines + ' صنف بلا تكلفة</span>' : '';
+      h += '<tr><td>' + esc(monthLabel(monthKey(r.month))) + '</td><td class="n">' + r.orders_count + '</td><td class="n">' + fmt(r.sales_total) +
+        '</td><td class="n">' + fmt(r.goods_cost) + '</td><td class="n">' + fmt(r.revenue) + miss + '</td><td class="n">' + fmt(r.paid_revenue) +
+        '</td><td class="n">' + fmt(r.operating_expenses) + '</td><td class="n ' + (net < 0 ? 'neg' : 'pos') + '">' + fmt(net) + '</td></tr>';
     });
     $('.fin-monthly').innerHTML = h + '</tbody></table>';
   }
