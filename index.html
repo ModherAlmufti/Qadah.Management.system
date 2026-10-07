@@ -222,6 +222,7 @@
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
   <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
+  <button class="tab hidden" id="tabFinanceBtn" data-tab="finance" onclick="switchTab('finance')">💰 المالية</button>
 </div>
 
 <!-- CATALOG -->
@@ -332,6 +333,11 @@
     <button class="btn btn-ghost" onclick="fetchUsers().then(renderUsers)">↻ تحديث</button>
   </div>
   <div class="tablewrap" id="usrTable"></div>
+</section>
+
+<!-- FINANCE (المدير فقط) — المحتوى يُبنى من finance.js -->
+<section id="tab-finance" class="hidden">
+  <div id="finance-root" style="padding:16px 24px 40px"></div>
 </section>
 </div>
 
@@ -498,6 +504,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="finance.js"></script>
 <script>
 /* ============================================================
    إعدادات Supabase — من: Project Settings → API
@@ -626,6 +633,8 @@ async function onSignedIn(){
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
+  document.getElementById('tabFinanceBtn').classList.toggle('hidden',ROLE!=='admin');
+  if(ROLE==='admin'&&window.QadahFinance)QadahFinance.mount(document.getElementById('finance-root'),sb);
   document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
   document.getElementById('recAdd').classList.toggle('hidden',!can.addTag());
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
@@ -723,10 +732,11 @@ async function fetchOrders(){const {data}=await sb.from('orders').select('*').or
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','occasions','orders','suppliers','drivers','users'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  ['catalog','occasions','orders','suppliers','drivers','users','finance'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
   if(t==='catalog')renderProducts();else if(t==='occasions')renderTags();else if(t==='orders')renderOrders();
   else if(t==='suppliers')renderSuppliers();
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
+  else if(t==='finance'&&ROLE==='admin'&&window.QadahFinance)QadahFinance.refresh();
 }
 function renderAll(){renderProducts();renderTags();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
 
