@@ -232,6 +232,8 @@
     <div class="search"><input id="search" type="text" placeholder="ابحث باسم الصنف..." oninput="renderProducts()"></div>
     <select id="catFilter" onchange="renderProducts()"></select>
     <select id="occFilter" onchange="renderProducts()"></select>
+    <select id="stFilter" onchange="renderProducts()">
+      <option value="live">الأصناف المعروضة</option><option value="off">الأصناف الموقوفة</option><option value="all">كل الأصناف</option></select>
     <select id="sortBy" onchange="renderProducts()">
       <option value="code">ترتيب: رقم الصنف</option><option value="price-asc">السعر: من الأقل</option>
       <option value="price-desc">السعر: من الأعلى</option><option value="name">الاسم أبجدياً</option></select>
@@ -239,6 +241,7 @@
     <button class="btn btn-gold" onclick="openCatalog()">📖 كتالوج</button>
     <button class="btn btn-green" onclick="exportProductsCSV()">⤓ تصدير</button>
     <button class="btn btn-ghost hidden" id="btnMigrate" onclick="migrateImages()">↻ نقل الصور القديمة إلى Supabase</button>
+    <button class="btn btn-ghost hidden" id="btnShrink" onclick="shrinkImages()">🗜 ضغط الصور الكبيرة</button>
     <button class="btn btn-primary" id="btnAdd" onclick="openProduct()">＋ صنف</button>
   </div>
   <div class="grid" id="grid"></div>
@@ -629,6 +632,7 @@ async function onSignedIn(){
 
   document.getElementById('btnAdd').classList.toggle('hidden',!can.add());
   document.getElementById('btnMigrate').classList.toggle('hidden',ROLE!=='admin');
+  document.getElementById('btnShrink').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('btnBulk').classList.toggle('hidden',!can.bulk());
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
@@ -671,7 +675,7 @@ function renderSupplierSelf(){
     <div class="stat"><div class="num">${myProducts.length}</div><div class="lbl">عدد منتجاتك</div></div>
     <div class="stat green"><div class="num">${fmt(myProducts.reduce((s,p)=>s+(p.supplier_price||0),0))}</div><div class="lbl">مجموع أسعار التوريد (د.ع)</div></div>`;
   document.getElementById('myProducts').innerHTML=myProducts.length?myProducts.map(p=>`
-    <div class="prod"><img class="photo" src="${p.image_url||PLACEHOLDER}" onerror="this.src='${PLACEHOLDER}'">
+    <div class="prod"><img class="photo" loading="lazy" decoding="async" src="${p.image_url||PLACEHOLDER}" onerror="this.src='${PLACEHOLDER}'">
       <div class="body"><span class="tag">${esc(p.category||'')}</span>
         <div class="code">صنف ${p.code||''}</div><h3>${esc(p.name_ar)}</h3>
         <div class="cost-line">سعر توريدك: ${fmt(p.supplier_price)} د.ع</div>
@@ -1031,18 +1035,32 @@ function renderProducts(){
   let list=products.filter(p=>{const okQ=!q||(p.name_ar||'').toLowerCase().includes(q)||(p.name_en||'').toLowerCase().includes(q);
     const ids=p.occasion_ids||[];
     const okO=!of||(of==='__none'?ids.length===0:ids.includes(of));
-    return okQ&&(!cf||p.category===cf)&&okO;});
+    const st=document.getElementById('stFilter').value, off=isOff(p);
+    const okS=st==='all'||(st==='off'?off:!off);
+    return okQ&&(!cf||p.category===cf)&&okO&&okS;});
   if(sort==='price-asc')list.sort((a,b)=>a.price-b.price);
   else if(sort==='price-desc')list.sort((a,b)=>b.price-a.price);
   else if(sort==='name')list.sort((a,b)=>(a.name_ar||'').localeCompare(b.name_ar||'','ar'));
   else list.sort((a,b)=>(a.code||0)-(b.code||0));
-  document.getElementById('grid').innerHTML=list.length?list.map(cardHTML).join(''):'<div class="empty">لا توجد أصناف مطابقة.</div>';
+  const emptyMsg=document.getElementById('stFilter').value==='off'?'لا توجد أصناف موقوفة.':'لا توجد أصناف مطابقة.';
+  document.getElementById('grid').innerHTML=list.length?list.map(cardHTML).join(''):`<div class="empty">${emptyMsg}</div>`;
   renderStats();
+}
+const isOff=p=>p.product_status==='متوقف';
+function showStopped(){document.getElementById('stFilter').value='off';renderProducts();}
+async function reactivateProduct(id){
+  if(!can.editAll())return;
+  const p=products.find(x=>x.id===id); if(!p)return;
+  if(!confirm(`إعادة تفعيل "${p.name_ar}"؟ سيظهر للعملاء مرة أخرى.`))return;
+  const {error}=await sb.from('products').update({product_status:'نشط'}).eq('id',id);
+  if(error){toast('تعذّر التفعيل: '+error.message);return;}
+  await fetchProducts();renderProducts();toast('تم تفعيل الصنف');
 }
 function cardHTML(p){
   const editBtn=can.editPrice()?`<button class="edit-b" onclick="openProduct('${p.id}')">تعديل</button>`:'';
   const delBtn=can.delete()?`<button class="del-b" onclick="removeProduct('${p.id}')">حذف</button>`:'';
-  const actions=(editBtn||delBtn)?`<div class="actions">${editBtn}${delBtn}</div>`:'';
+  const reBtn=(isOff(p)&&can.editAll())?`<button class="edit-b" style="color:var(--green)" onclick="reactivateProduct('${p.id}')">إعادة تفعيل</button>`:'';
+  const actions=(editBtn||delBtn||reBtn)?`<div class="actions">${reBtn}${editBtn}${delBtn}</div>`:'';
   const starClick=can.editAll()?`onclick="toggleStar('${p.id}')"`:'style="cursor:default"';
   let costLine='';
   if(can.seeCost()&&costMap[p.id]&&costMap[p.id].supplier_price!=null){
@@ -1052,7 +1070,7 @@ function cardHTML(p){
   const statusChip=(p.product_status&&p.product_status!=='نشط')?`<span class="status-chip status-off">${esc(p.product_status)}</span>`:'';
   return `<div class="prod">
     <span class="star ${p.featured?'on':''}" ${starClick}>★</span>
-    <img class="photo" src="${p.image_url||PLACEHOLDER}" alt="${esc(p.name_ar)}" onerror="this.src='${PLACEHOLDER}'">
+    <img class="photo" loading="lazy" decoding="async" src="${p.image_url||PLACEHOLDER}" alt="${esc(p.name_ar)}" onerror="this.src='${PLACEHOLDER}'">
     <div class="body"><span class="tag">${esc(p.category||'')}</span>
       ${p.badge&&BADGE_AR[p.badge]?`<span class="badge-chip">${BADGE_AR[p.badge]}</span>`:''}
       <div class="code">صنف ${p.code||''} ${statusChip}</div>
@@ -1064,18 +1082,20 @@ function cardHTML(p){
     </div>${actions}</div>`;
 }
 function renderStats(){
-  const n=products.length, value=products.reduce((s,p)=>s+p.price,0), avg=n?Math.round(value/n):0;
+  const live=products.filter(p=>!isOff(p)), offN=products.length-live.length;
+  const n=live.length, value=live.reduce((s,p)=>s+p.price,0), avg=n?Math.round(value/n):0;
   let extra='';
   if(can.seeCost()){
     let known=0;
-    products.forEach(p=>{const c=costMap[p.id];if(c&&c.supplier_price!=null)known++;});
-    const realProfit=products.reduce((s,p)=>{const c=costMap[p.id];return s+(c&&c.supplier_price!=null?(p.price-c.supplier_price):0);},0);
+    live.forEach(p=>{const c=costMap[p.id];if(c&&c.supplier_price!=null)known++;});
+    const realProfit=live.reduce((s,p)=>{const c=costMap[p.id];return s+(c&&c.supplier_price!=null?(p.price-c.supplier_price):0);},0);
     extra=`<div class="stat green"><div class="num">${fmt(realProfit)}</div><div class="lbl">الربح الفعلي (${known} صنف بتكلفة)</div></div>`;
   }
   document.getElementById('stats').innerHTML=`
-    <div class="stat"><div class="num">${n}</div><div class="lbl">إجمالي الأصناف</div></div>
+    <div class="stat"><div class="num">${n}</div><div class="lbl">الأصناف المعروضة</div></div>
     <div class="stat"><div class="num">${fmt(avg)}</div><div class="lbl">متوسط السعر (د.ع)</div></div>
-    <div class="stat green"><div class="num">${fmt(value)}</div><div class="lbl">قيمة الكتالوج</div></div>${extra}`;
+    <div class="stat green"><div class="num">${fmt(value)}</div><div class="lbl">قيمة الكتالوج</div></div>${extra}
+    <div class="stat" style="cursor:pointer" onclick="showStopped()" title="اضغط لعرض الأصناف الموقوفة"><div class="num" style="color:var(--ink-soft)">${offN}</div><div class="lbl">أصناف موقوفة ←</div></div>`;
 }
 
 let pickedFile=null;
@@ -1142,10 +1162,37 @@ function updateProfitHint(){
   else h.textContent='';
 }
 function pickImg(e){const f=e.target.files[0];if(!f)return;pickedFile=f;document.getElementById('p_preview').src=URL.createObjectURL(f);}
+/* ===== ضغط الصور قبل الرفع =====
+   كل صورة تُصغَّر إلى عرض/ارتفاع أقصى IMG_MAX_SIDE وتُحوَّل إلى WebP قبل رفعها.
+   صورة كاميرا بحجم 8-10MB تصبح عادة 150-350KB بجودة لا يُلاحظ فرقها. */
+const IMG_MAX_SIDE=1600, IMG_QUALITY=0.82, IMG_CACHE='31536000';
+async function loadBitmap(blob){
+  try{return await createImageBitmap(blob,{imageOrientation:'from-image'});}
+  catch(e){
+    return await new Promise((res,rej)=>{const img=new Image();const u=URL.createObjectURL(blob);
+      img.onload=()=>{URL.revokeObjectURL(u);res(img);};img.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('تعذّر قراءة الصورة'));};img.src=u;});
+  }
+}
+async function compressImage(blob){
+  const bmp=await loadBitmap(blob);
+  const w0=bmp.width, h0=bmp.height, k=Math.min(1,IMG_MAX_SIDE/Math.max(w0,h0));
+  const w=Math.round(w0*k), h=Math.round(h0*k);
+  const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  const ctx=cv.getContext('2d');ctx.imageSmoothingQuality='high';ctx.drawImage(bmp,0,0,w,h);
+  if(bmp.close)bmp.close();
+  const toBlob=type=>new Promise(r=>cv.toBlob(r,type,IMG_QUALITY));
+  let out=await toBlob('image/webp'), ext='webp';
+  if(!out||out.type!=='image/webp'){out=await toBlob('image/jpeg');ext='jpg';}   // متصفح لا يدعم WebP
+  if(!out)throw new Error('تعذّر ضغط الصورة');
+  return {blob:out,ext};
+}
 async function uploadImage(file){
-  const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+  let blob=file, ext=(file.name&&file.name.split('.').pop()||'jpg').toLowerCase(), type=file.type||'image/jpeg';
+  try{const c=await compressImage(file);
+    if(c.blob.size<file.size){blob=c.blob;ext=c.ext;type=c.blob.type;}
+  }catch(e){console.warn('compress skipped',e);}   // إن فشل الضغط نرفع الأصل بدل أن نوقف العمل
   const path=`p_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext}`;
-  const {error}=await sb.storage.from('product-images').upload(path,file,{upsert:false});
+  const {error}=await sb.storage.from('product-images').upload(path,blob,{upsert:false,contentType:type,cacheControl:IMG_CACHE});
   if(error){toast('تعذّر رفع الصورة');return null;}
   return sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
 }
@@ -1186,6 +1233,68 @@ async function migrateImages(){
   btn.disabled=false;btn.textContent='↻ نقل الصور القديمة إلى Supabase';
   await fetchProducts();renderProducts();
   toast(`تم نقل ${ok} صورة`+(fail?`، وتعذّر نقل ${fail} (راجع Console)`:''));
+}
+/* ===== زر لمرة واحدة: ضغط الصور الكبيرة الموجودة وحذف الملفات اليتيمة (المدير فقط) ===== */
+const SHRINK_MIN_BYTES=600*1024;   // نضغط فقط الصور الأكبر من 600KB
+async function listBucket(prefix){
+  const all=[];let offset=0;
+  while(true){
+    const {data,error}=await sb.storage.from('product-images').list(prefix,{limit:1000,offset});
+    if(error)throw error; if(!data||!data.length)break;
+    data.forEach(o=>{if(o.id)all.push({path:(prefix?prefix+'/':'')+o.name,size:(o.metadata&&o.metadata.size)||0});});
+    if(data.length<1000)break; offset+=1000;
+  }
+  return all;
+}
+async function shrinkImages(){
+  if(ROLE!=='admin'){toast('المدير فقط');return;}
+  const btn=document.getElementById('btnShrink'), label=btn.textContent;
+  btn.disabled=true;btn.textContent='جارٍ الفحص...';
+  try{
+    await fetchProducts();
+    const objs=[...await listBucket(''),...await listBucket('images')];
+    const sizeOf={};objs.forEach(o=>sizeOf[o.path]=o.size);
+    // 1) الصور المستخدمة والكبيرة
+    const todo=products.filter(p=>{const path=storagePathFromUrl(p.image_url);return path&&(sizeOf[path]||0)>SHRINK_MIN_BYTES;});
+    const todoMB=todo.reduce((s,p)=>s+sizeOf[storagePathFromUrl(p.image_url)],0)/1048576;
+    if(todo.length&&confirm(`وُجدت ${todo.length} صورة كبيرة مستخدمة (${todoMB.toFixed(1)} MB).\nسيتم ضغطها واستبدالها وحذف الأصل الكبير. تابع؟`)){
+      let ok=0,fail=0;
+      for(let i=0;i<todo.length;i++){const p=todo[i];
+        btn.textContent=`ضغط الصور... ${i+1}/${todo.length}`;
+        try{
+          const oldUrl=p.image_url;
+          const res=await fetch(oldUrl,{cache:'no-store'}); if(!res.ok)throw new Error('fetch '+res.status);
+          const c=await compressImage(await res.blob());
+          const path=`p_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${c.ext}`;
+          const {error:upErr}=await sb.storage.from('product-images').upload(path,c.blob,{upsert:false,contentType:c.blob.type,cacheControl:IMG_CACHE});
+          if(upErr)throw upErr;
+          const url=sb.storage.from('product-images').getPublicUrl(path).data.publicUrl;
+          const {error:updErr}=await sb.from('products').update({image_url:url}).eq('id',p.id);
+          if(updErr){await sb.storage.from('product-images').remove([path]);throw updErr;}
+          await deleteImageIfSupabase(oldUrl);   // نحذف الأصل فقط بعد نجاح التحديث
+          ok++;
+        }catch(e){console.error('shrink fail code',p.code,e);fail++;}
+      }
+      toast(`تم ضغط ${ok} صورة`+(fail?`، وتعذّر ${fail} (راجع Console)`:''));
+      await fetchProducts();renderProducts();
+    }else if(!todo.length){toast('لا توجد صور مستخدمة تحتاج ضغطاً');}
+    // 2) ملفات يتيمة: موجودة في التخزين ولا يستخدمها أي صنف
+    btn.textContent='جارٍ فحص الملفات غير المستخدمة...';
+    const used=new Set(products.map(p=>storagePathFromUrl(p.image_url)).filter(Boolean));
+    const after=[...await listBucket(''),...await listBucket('images')];
+    const orphans=after.filter(o=>!used.has(o.path)&&!o.path.endsWith('.emptyFolderPlaceholder'));
+    if(orphans.length){
+      const mb=orphans.reduce((s,o)=>s+o.size,0)/1048576;
+      if(confirm(`وُجد ${orphans.length} ملف في التخزين لا يستخدمه أي صنف (${mb.toFixed(1)} MB).\nهذه غالباً صور قديمة أو مكررة. حذفها؟`)){
+        for(let i=0;i<orphans.length;i+=100){
+          const {error}=await sb.storage.from('product-images').remove(orphans.slice(i,i+100).map(o=>o.path));
+          if(error){toast('تعذّر حذف بعض الملفات');console.error(error);break;}
+        }
+        toast(`تم حذف ${orphans.length} ملف غير مستخدم`);
+      }
+    }
+  }catch(e){console.error(e);toast(e.message||'حدث خطأ');}
+  btn.disabled=false;btn.textContent=label;
 }
 async function saveProduct(){
   const name_ar=p_nameAr.value.trim(), price=parseInt(p_price.value,10);
@@ -1234,14 +1343,43 @@ async function saveProduct(){
   }catch(e){toast(e.message||'خطأ أثناء الحفظ');}
   btn.disabled=false;btn.textContent='حفظ';
 }
+/* حذف الصنف:
+   - صنف ظهر في طلبات سابقة لا يُحذف (الطلبات القديمة مرتبطة به عبر order_items)، فنعرض إيقافه بدل الحذف.
+   - صنف بلا طلبات: نحذف ربط المورد والتكلفة من product_costs أولاً، ثم الصنف، ثم صورته.
+   - أي خطأ يظهر برسالته الحقيقية بدل "تعذّر الحذف". */
+async function archiveProduct(p){
+  const {error}=await sb.from('products').update({product_status:'متوقف',featured:false}).eq('id',p.id);
+  if(error){toast('تعذّر الإيقاف: '+error.message);return;}
+  await fetchProducts();renderProducts();toast('تم إيقاف الصنف، ولن يظهر للعملاء');
+}
 async function removeProduct(id){
   if(!can.delete())return;
-  const p=products.find(x=>x.id===id);
-  if(!confirm(`حذف "${p.name_ar}"؟`))return;
-  const {error}=await sb.from('products').delete().eq('id',id);
-  if(error){toast('تعذّر الحذف');return;}
+  const p=products.find(x=>x.id===id); if(!p)return;
+  const {count,error:cErr}=await sb.from('order_items').select('id',{count:'exact',head:true}).eq('product_id',id);
+  if(cErr){toast('تعذّر فحص الطلبات: '+cErr.message);return;}
+  if(count>0){
+    if(p.product_status==='متوقف'){toast(`"${p.name_ar}" موجود في ${count} طلب سابق، ولا يمكن حذفه. هو موقوف ولا يراه العملاء.`);return;}
+    if(confirm(`"${p.name_ar}" موجود في ${count} طلب سابق، لذلك لا يمكن حذفه حفاظاً على سجل الطلبات.\n\nهل تريد إيقافه بدلاً من ذلك؟ (يختفي من المتجر والميني آب والبوت، ويبقى في اللوحة)`))
+      await archiveProduct(p);
+    return;
+  }
+  if(!confirm(`حذف "${p.name_ar}" نهائياً؟ لا يمكن التراجع.`))return;
+  const savedCost=costMap[id]?{...costMap[id]}:null;   // نحتفظ بنسخة لنعيدها إن فشل حذف الصنف
+  const {error:costErr}=await sb.from('product_costs').delete().eq('product_id',id);
+  if(costErr){toast('تعذّر حذف ربط المورد: '+costErr.message);return;}
+  const {data,error}=await sb.from('products').delete().eq('id',id).select('id');
+  if(error){
+    console.error('delete product',error);
+    if(savedCost)await sb.from('product_costs').upsert(savedCost);
+    if(error.code==='23503'){
+      if(confirm('الصنف مرتبط ببيانات أخرى ولا يمكن حذفه.\nهل تريد إيقافه بدلاً من ذلك؟'))await archiveProduct(p);
+    }else toast('تعذّر الحذف: '+error.message);
+    if(can.seeCost())await fetchCosts();
+    return;
+  }
+  if(!data||!data.length){toast('لم يُحذف شيء. تأكد أن حسابك بصلاحية مدير.');return;}
   await deleteImageIfSupabase(p.image_url);
-  await fetchProducts();renderProducts();toast('تم الحذف');
+  await fetchProducts(); if(can.seeCost())await fetchCosts(); renderProducts(); toast('تم الحذف');
 }
 async function toggleStar(id){
   if(!can.editAll())return;const p=products.find(x=>x.id===id);
@@ -1381,15 +1519,15 @@ async function applyBulk(){
 function openCatalog(){buildCatalog();document.getElementById('catModal').classList.add('show');}
 function buildCatalog(){
   const cat=document.getElementById('c_cat').value;
-  const list=products.filter(p=>!cat||p.category===cat).sort((a,b)=>a.price-b.price);
+  const list=products.filter(p=>!isOff(p)&&(!cat||p.category===cat)).sort((a,b)=>a.price-b.price);
   document.getElementById('catContent').innerHTML=`
     <div class="cat-head"><h2>قدّاح للورد</h2><p>${cat||'الكتالوج الكامل'} — ${list.length} صنف</p></div>
-    <div class="cat-grid">${list.map(p=>`<div class="cat-item"><img src="${p.image_url||PLACEHOLDER}" onerror="this.src='${PLACEHOLDER}'">
+    <div class="cat-grid">${list.map(p=>`<div class="cat-item"><img loading="lazy" decoding="async" src="${p.image_url||PLACEHOLDER}" onerror="this.src='${PLACEHOLDER}'">
       <span class="n">${esc(p.name_ar)}</span><span class="p">${fmt(p.price)} د.ع</span></div>`).join('')}</div>`;
 }
 function copyWhatsapp(){
   const cat=document.getElementById('c_cat').value;
-  const list=products.filter(p=>!cat||p.category===cat).sort((a,b)=>a.price-b.price);
+  const list=products.filter(p=>!isOff(p)&&(!cat||p.category===cat)).sort((a,b)=>a.price-b.price);
   let txt=`🌸 *قدّاح للورد*\n${cat||'الكتالوج الكامل'}\n\n`;
   list.forEach(p=>txt+=`• ${p.name_ar} — ${fmt(p.price)} د.ع\n`);txt+=`\nللطلب تواصل معنا 💐`;
   navigator.clipboard.writeText(txt).then(()=>toast('تم نسخ النص')).catch(()=>toast('انسخ يدوياً'));
