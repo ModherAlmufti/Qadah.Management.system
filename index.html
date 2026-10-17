@@ -351,6 +351,7 @@
     <input type="hidden" id="p_id">
     <div class="field" id="p_imgField"><label>صورة الصنف</label>
       <div class="img-pick"><img id="p_preview" alt="" src=""><input type="file" id="p_imgfile" accept="image/*" onchange="pickImg(event)"></div></div>
+    <div class="field"><label>صور إضافية (معرض الصنف)</label><div id="p_gallery"></div></div>
     <div class="field"><label>اسم الصنف (عربي)</label><input id="p_nameAr" placeholder="باقة ورد أحمر"></div>
     <div class="field"><label>اسم الصنف (إنجليزي)</label><input id="p_nameEn" class="en" placeholder="Red Rose Bouquet"></div>
     <div class="row2">
@@ -381,6 +382,13 @@
     <div class="field"><label>ملاحظات</label><textarea id="p_note"></textarea></div>
   </div>
   <div class="modal-foot"><button class="btn btn-primary" id="p_saveBtn" onclick="saveProduct()">حفظ</button><button class="btn btn-ghost" onclick="close_('prodModal')">إلغاء</button></div>
+</div></div>
+
+<!-- GALLERY MODAL (واجهة المورد) -->
+<div class="overlay" id="galModal"><div class="modal" style="max-width:560px">
+  <div class="modal-head"><h2 id="galTitle">صور إضافية</h2><button class="x" onclick="close_('galModal')">&times;</button></div>
+  <div class="modal-body"><div id="galBox"></div></div>
+  <div class="modal-foot"><button class="btn btn-ghost" onclick="close_('galModal')">إغلاق</button></div>
 </div></div>
 
 <!-- OCCASION / RECIPIENT MODAL -->
@@ -508,6 +516,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="finance.js"></script>
+<script src="gallery.js"></script>
 <script>
 /* ============================================================
    إعدادات Supabase — من: Project Settings → API
@@ -679,7 +688,8 @@ function renderSupplierSelf(){
       <div class="body"><span class="tag">${esc(p.category||'')}</span>
         <div class="code">صنف ${p.code||''}</div><h3>${esc(p.name_ar)}</h3>
         <div class="cost-line">سعر توريدك: ${fmt(p.supplier_price)} د.ع</div>
-        ${p.id?`<label class="btn btn-ghost" style="margin-top:8px;cursor:pointer;font-size:13px">📷 تغيير الصورة<input type="file" accept="image/*" style="display:none" onchange="supplierChangeImage(event,'${p.id}')"></label>`:''}
+        ${p.id?`<label class="btn btn-ghost" style="margin-top:8px;cursor:pointer;font-size:13px">📷 تغيير الصورة<input type="file" accept="image/*" style="display:none" onchange="supplierChangeImage(event,'${p.id}')"></label>
+        <button class="btn btn-ghost" style="margin-top:6px;font-size:13px" onclick="openSupplierGallery('${p.id}')">🖼 صور إضافية</button>`:''}
       </div></div>`).join(''):'<div class="empty">لا منتجات مرتبطة بك بعد. تضيفها إدارة قدّاح.</div>';
 }
 async function supplierChangeImage(e,productId){
@@ -1132,6 +1142,7 @@ function openProduct(id){
   ['p_nameAr','p_nameEn','p_cat','p_badge','p_note','p_avSup','p_avDel','p_status','p_photo'].forEach(k=>document.getElementById(k).disabled=false);
   pickLocked=false;renderPickers();
   updateProfitHint();
+  mountGallery(document.getElementById('p_gallery'),id||null,can.editPrice());
   document.getElementById('prodModal').classList.add('show');
 }
 document.addEventListener('input',e=>{if(e.target&&['p_cost','p_price','p_margin'].includes(e.target.id))recalcPricing(e.target.id);});
@@ -1160,6 +1171,17 @@ function updateProfitHint(){
   const h=document.getElementById('p_profitHint');
   if(!isNaN(cost)&&cost>=0){const pr=price-cost;h.textContent=`الربح الفعلي = ${fmt(pr)} د.ع`+(price>0?` (${Math.round(pr/price*100)}%)`:'');}
   else h.textContent='';
+}
+/* معرض الصور الإضافية (gallery.js) */
+function mountGallery(box,productId,canEdit){
+  if(!window.QadahGallery){box.innerHTML='<div class="hint">تعذّر تحميل ملف المعرض gallery.js</div>';return;}
+  QadahGallery.mount(box,{sb,productId,canEdit,compress:compressImage,cache:IMG_CACHE});
+}
+function openSupplierGallery(productId){
+  const p=myProducts.find(x=>x.id===productId);
+  document.getElementById('galTitle').textContent='صور إضافية: '+(p?p.name_ar:'');
+  mountGallery(document.getElementById('galBox'),productId,true);
+  document.getElementById('galModal').classList.add('show');
 }
 function pickImg(e){const f=e.target.files[0];if(!f)return;pickedFile=f;document.getElementById('p_preview').src=URL.createObjectURL(f);}
 /* ===== ضغط الصور قبل الرفع =====
@@ -1365,6 +1387,7 @@ async function removeProduct(id){
   }
   if(!confirm(`حذف "${p.name_ar}" نهائياً؟ لا يمكن التراجع.`))return;
   const savedCost=costMap[id]?{...costMap[id]}:null;   // نحتفظ بنسخة لنعيدها إن فشل حذف الصنف
+  const {data:galRows}=await sb.from('product_images').select('url').eq('product_id',id);   // صفوف المعرض تُحذف تلقائياً مع الصنف، والملفات نحذفها نحن
   const {error:costErr}=await sb.from('product_costs').delete().eq('product_id',id);
   if(costErr){toast('تعذّر حذف ربط المورد: '+costErr.message);return;}
   const {data,error}=await sb.from('products').delete().eq('id',id).select('id');
@@ -1379,6 +1402,7 @@ async function removeProduct(id){
   }
   if(!data||!data.length){toast('لم يُحذف شيء. تأكد أن حسابك بصلاحية مدير.');return;}
   await deleteImageIfSupabase(p.image_url);
+  if(window.QadahGallery&&galRows&&galRows.length)await QadahGallery.removeAllFiles(sb,galRows.map(r=>r.url));
   await fetchProducts(); if(can.seeCost())await fetchCosts(); renderProducts(); toast('تم الحذف');
 }
 async function toggleStar(id){
