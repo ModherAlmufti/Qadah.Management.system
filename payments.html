@@ -93,6 +93,8 @@ let toastT; function toast(t){ const e=$("toast"); e.textContent=t; e.style.disp
 const STATUS_AR = { CREATING:"قيد الإنشاء", CREATED:"بانتظار الدفع", SUCCESS:"مدفوع", FAILED:"فشل", AUTHENTICATION_FAILED:"فشل التحقق 3DS", ERROR:"خطأ" };
 function statusChip(r){
   if (r.canceled) return '<span class="chip bad">ملغى</span>';
+  const ref = Number(r.refunded_amount) || 0;
+  if (ref > 0) return ref >= Number(r.amount) ? '<span class="chip">مسترجع</span>' : '<span class="chip">مسترجع جزئياً</span>';
   const cls = r.status === "SUCCESS" ? "ok" : (["FAILED","AUTHENTICATION_FAILED","ERROR"].includes(r.status) ? "bad" : "");
   return `<span class="chip ${cls}">${esc(STATUS_AR[r.status] || r.status)}</span>`;
 }
@@ -123,7 +125,7 @@ function render(){
       <td><div class="acts">
         <button class="btn ghost" data-a="status" data-id="${r.id}" ${r.payment_id ? "" : "disabled"}>تحقق</button>
         <button class="btn" data-a="refund" data-id="${r.id}" data-rem="${remaining}" ${paid && remaining > 0 ? "" : "disabled"}>استرجاع</button>
-        <button class="btn bad" data-a="cancel" data-id="${r.id}" ${r.payment_id && !r.canceled ? "" : "disabled"}>إلغاء</button>
+        <button class="btn bad" data-a="cancel" data-id="${r.id}" ${r.payment_id && !r.canceled && !(Number(r.refunded_amount) > 0) ? "" : "disabled"}>إلغاء</button>
       </div>${ops ? `<div class="ops">${ops}</div>` : ""}</td>
     </tr>`;
   }).join("");
