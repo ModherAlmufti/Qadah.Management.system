@@ -221,6 +221,7 @@
   <button class="tab" data-tab="orders" onclick="switchTab('orders')">🧾 الطلبات</button>
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
+  <button class="tab hidden" id="tabDeliveryBtn" data-tab="delivery" onclick="switchTab('delivery')">🕒 التوصيل</button>
   <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
   <button class="tab hidden" id="tabFinanceBtn" data-tab="finance" onclick="switchTab('finance')">💰 المالية</button>
 </div>
@@ -336,6 +337,11 @@
     <button class="btn btn-ghost" onclick="fetchUsers().then(renderUsers)">↻ تحديث</button>
   </div>
   <div class="tablewrap" id="usrTable"></div>
+</section>
+
+<!-- DELIVERY (فترات التوصيل، موعد الإغلاق، المناطق) — المحتوى يُبنى من delivery.js -->
+<section id="tab-delivery" class="hidden">
+  <div id="delivery-root" style="padding:16px 24px 40px"></div>
 </section>
 
 <!-- FINANCE (المدير فقط) — المحتوى يُبنى من finance.js -->
@@ -517,6 +523,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="finance.js"></script>
 <script src="gallery.js"></script>
+<script src="delivery.js"></script>
 <script>
 /* ============================================================
    إعدادات Supabase — من: Project Settings → API
@@ -648,6 +655,7 @@ async function onSignedIn(){
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('tabFinanceBtn').classList.toggle('hidden',ROLE!=='admin');
   if(ROLE==='admin'&&window.QadahFinance)QadahFinance.mount(document.getElementById('finance-root'),sb);
+  document.getElementById('tabDeliveryBtn').classList.toggle('hidden',!window.QadahDelivery);
   document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
   document.getElementById('recAdd').classList.toggle('hidden',!can.addTag());
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
@@ -746,12 +754,17 @@ async function fetchOrders(){const {data}=await sb.from('orders').select('*').or
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','occasions','orders','suppliers','drivers','users','finance'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  ['catalog','occasions','orders','suppliers','drivers','users','finance','delivery'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
   if(t==='catalog')renderProducts();else if(t==='occasions')renderTags();else if(t==='orders')renderOrders();
   else if(t==='suppliers')renderSuppliers();
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
   else if(t==='finance'&&ROLE==='admin'&&window.QadahFinance)QadahFinance.refresh();
+  else if(t==='delivery'&&window.QadahDelivery){
+    if(!deliveryMounted){deliveryMounted=true;QadahDelivery.mount(document.getElementById('delivery-root'),sb,{canEdit:ROLE==='admin'});}
+    else QadahDelivery.refresh();
+  }
 }
+let deliveryMounted=false;
 function renderAll(){renderProducts();renderTags();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
 
 /* ============================================================
@@ -822,13 +835,19 @@ async function openOrder(id){
     dl('هاتف المستلم',`<span class="en">${esc(o.recipient_phone)}</span>`)+
     dl('عنوان التوصيل',esc(o.delivery_address))+
     dl('تاريخ التوصيل',`<span class="en">${esc(fmtDate(o.delivery_date))}</span>`)+
+    dl('فترة التوصيل',o.delivery_slot?esc(o.delivery_slot):'')+
+    dl('المنطقة',o.delivery_area?esc(o.delivery_area):'')+
     dl('الحالة الحالية',statusChipHTML(o.status))+
     dl('حالة الدفع',payChipHTML(o.payment_status))+
     dl('قيمة الأصناف',fmt(o.subtotal)+' د.ع')+
     feeFieldHTML(o)+
     dl('الإجمالي','<b id="ord_totalCell">'+fmt(o.total)+' د.ع</b>')+
     dl('القناة',`<span class="en">${esc(o.channel||'')}</span>`)+
-    (o.gift_message?dl('رسالة الإهداء',esc(o.gift_message)):'');
+    (o.gift_message?dl('رسالة الإهداء',esc(o.gift_message)):'')+
+    (o.is_surprise?dl('مفاجأة','<span class="chip">🤫 مفاجأة: لا تتصلوا بالمستلم قبل الوصول</span>'):'')+
+    (o.card_style?dl('شكل البطاقة',`<span class="en">${esc(o.card_style)}</span>`):'')+
+    (o.is_anonymous?dl('التوقيع','<span class="chip">بدون اسم المرسل</span>')
+      :(o.card_signature?dl('التوقيع على البطاقة',esc(o.card_signature)):''));
 
   // صندوق تحريك الحالة: يظهر لمن يملك الصلاحية وللطلبات غير المنتهية فقط
   const moveBox=document.getElementById('ord_moveBox');
