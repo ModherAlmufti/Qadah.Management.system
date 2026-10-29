@@ -224,6 +224,7 @@
   <button class="tab hidden" id="tabDeliveryBtn" data-tab="delivery" onclick="switchTab('delivery')">🕒 التوصيل</button>
   <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
   <button class="tab hidden" id="tabFinanceBtn" data-tab="finance" onclick="switchTab('finance')">💰 المالية</button>
+  <a class="tab hidden" id="tabPaymentsBtn" href="payments.html" style="text-decoration:none;display:inline-block">💳 مدفوعات الموقع</a>
 </div>
 
 <!-- CATALOG -->
@@ -654,6 +655,7 @@ async function onSignedIn(){
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('tabFinanceBtn').classList.toggle('hidden',ROLE!=='admin');
+  document.getElementById('tabPaymentsBtn').classList.toggle('hidden',ROLE!=='admin');
   if(ROLE==='admin'&&window.QadahFinance)QadahFinance.mount(document.getElementById('finance-root'),sb);
   document.getElementById('tabDeliveryBtn').classList.toggle('hidden',!window.QadahDelivery);
   document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
