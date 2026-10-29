@@ -90,12 +90,12 @@ const when = (d) => { const x = new Date(d); const p = (n) => String(n).padStart
   return `${p(x.getDate())}/${p(x.getMonth()+1)}/${x.getFullYear()} ${p(x.getHours())}:${p(x.getMinutes())}`; };
 let toastT; function toast(t){ const e=$("toast"); e.textContent=t; e.style.display="block"; clearTimeout(toastT); toastT=setTimeout(()=>e.style.display="none",4000); }
 
-const STATUS_AR = { CREATING:"قيد الإنشاء", CREATED:"بانتظار الدفع", SUCCESS:"مدفوع", FAILED:"فشل", AUTHENTICATION_FAILED:"فشل التحقق 3DS", ERROR:"خطأ" };
+const STATUS_AR = { CREATING:"قيد الإنشاء", CREATED:"بانتظار الدفع", SUCCESS:"مدفوع", FAILED:"فشل", AUTHENTICATION_FAILED:"فشل التحقق 3DS", ERROR:"خطأ", EXPIRED:"انتهت المهلة", FORM_SHOW:"فُتحت صفحة الدفع" };
 function statusChip(r){
   if (r.canceled) return '<span class="chip bad">ملغى</span>';
   const ref = Number(r.refunded_amount) || 0;
   if (ref > 0) return ref >= Number(r.amount) ? '<span class="chip">مسترجع</span>' : '<span class="chip">مسترجع جزئياً</span>';
-  const cls = r.status === "SUCCESS" ? "ok" : (["FAILED","AUTHENTICATION_FAILED","ERROR"].includes(r.status) ? "bad" : "");
+  const cls = r.status === "SUCCESS" ? "ok" : (["FAILED","AUTHENTICATION_FAILED","ERROR","EXPIRED"].includes(r.status) ? "bad" : "");
   return `<span class="chip ${cls}">${esc(STATUS_AR[r.status] || r.status)}</span>`;
 }
 
