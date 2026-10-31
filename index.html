@@ -236,9 +236,12 @@
     <select id="occFilter" onchange="renderProducts()"></select>
     <select id="stFilter" onchange="renderProducts()">
       <option value="live">الأصناف المعروضة</option><option value="off">الأصناف الموقوفة</option><option value="all">كل الأصناف</option></select>
+    <select id="colorFilter" onchange="renderProducts()"><option value="">كل الألوان</option></select>
     <select id="sortBy" onchange="renderProducts()">
-      <option value="code">ترتيب: رقم الصنف</option><option value="price-asc">السعر: من الأقل</option>
+      <option value="display">ترتيب: كما يراه العملاء</option><option value="code">ترتيب: رقم الصنف</option><option value="price-asc">السعر: من الأقل</option>
       <option value="price-desc">السعر: من الأعلى</option><option value="name">الاسم أبجدياً</option></select>
+    <button class="btn btn-ghost hidden" id="btnOrder" onclick="openDisplayOrder()">⇅ ترتيب العرض</button>
+    <button class="btn btn-ghost hidden" id="btnColors" onclick="openColorsList()">🎨 قائمة الألوان</button>
     <button class="btn btn-ghost" id="btnBulk" onclick="openBulk()">↕ تعديل الأسعار</button>
     <button class="btn btn-gold" onclick="openCatalog()">📖 كتالوج</button>
     <button class="btn btn-green" onclick="exportProductsCSV()">⤓ تصدير</button>
@@ -357,7 +360,9 @@
   <div class="modal-body">
     <input type="hidden" id="p_id">
     <div class="field" id="p_imgField"><label>صورة الصنف</label>
-      <div class="img-pick"><img id="p_preview" alt="" src=""><input type="file" id="p_imgfile" accept="image/*" onchange="pickImg(event)"></div></div>
+      <div class="img-pick"><img id="p_preview" alt="" src=""><input type="file" id="p_imgfile" accept="image/*" onchange="pickImg(event)">
+        <button type="button" class="btn btn-ghost" id="p_editImg" onclick="editCoverImage()" style="font-size:13px;padding:8px 12px">✂️ تعديل الصورة</button></div>
+      <div class="hint">عند اختيار صورة تفتح أداة التعديل: تكبير وتصغير، تحريك، تدوير، سطوع، تباين، وحدة.</div></div>
     <div class="field"><label>صور إضافية (معرض الصنف)</label><div id="p_gallery"></div></div>
     <div class="field"><label>اسم الصنف (عربي)</label><input id="p_nameAr" placeholder="باقة ورد أحمر"></div>
     <div class="field"><label>اسم الصنف (إنجليزي)</label><input id="p_nameEn" class="en" placeholder="Red Rose Bouquet"></div>
@@ -384,6 +389,10 @@
     <div class="field"><label>المناسبات (اختر واحدة أو أكثر)</label><div class="pick-chips" id="p_occasions"></div>
       <div class="hint">يظهر الصنف للعميل عند اختيار أي من هذه المناسبات. أضف أو عدّل المناسبات من تبويب "المناسبات".</div></div>
     <div class="field"><label>لمن الهدية</label><div class="pick-chips" id="p_recipients"></div></div>
+    <div class="field" id="p_colorsField"><label>الألوان (اختر لوناً أو أكثر)</label><div id="p_colors"></div>
+      <div class="hint">تظهر للعميل في فلتر اللون بالمتجر والميني اب.</div></div>
+    <label class="field" id="p_bannerField" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:14px">
+      <input type="checkbox" id="p_banner" style="width:18px;height:18px;accent-color:var(--navy)"> 🎞 يظهر في الشريط المتحرك بالصفحة الرئيسية</label>
     <div class="field"><label>الوسم على بطاقة الصنف</label><select id="p_badge">
       <option value="">بدون وسم</option><option value="best_seller">الأكثر طلباً</option><option value="new">جديد</option><option value="premium">بريميوم</option></select></div>
     <div class="field"><label>ملاحظات</label><textarea id="p_note"></textarea></div>
@@ -525,6 +534,8 @@
 <script src="finance.js"></script>
 <script src="gallery.js"></script>
 <script src="delivery.js"></script>
+<script src="display.js"></script>
+<script src="imgedit.js"></script>
 <script>
 /* ============================================================
    إعدادات Supabase — من: Project Settings → API
@@ -651,6 +662,8 @@ async function onSignedIn(){
   document.getElementById('btnMigrate').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('btnShrink').classList.toggle('hidden',ROLE!=='admin');
   document.getElementById('btnBulk').classList.toggle('hidden',!can.bulk());
+  document.getElementById('btnOrder').classList.toggle('hidden',!(can.editPrice()&&window.QadahDisplay));
+  document.getElementById('btnColors').classList.toggle('hidden',!(can.editPrice()&&window.QadahDisplay));
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
@@ -678,6 +691,7 @@ async function loadSupplierSelf(){
   myRow=(mine&&mine[0])||null;
   const {data:prods}=await sb.from('my_supplier_products').select('*').order('code');
   myProducts=prods||[];
+  if(window.QadahDisplay){try{await QadahDisplay.load(sb);}catch(e){console.warn('display load',e);}}
   renderSupplierSelf();
 }
 function renderSupplierSelf(){
@@ -698,18 +712,31 @@ function renderSupplierSelf(){
       <div class="body"><span class="tag">${esc(p.category||'')}</span>
         <div class="code">صنف ${p.code||''}</div><h3>${esc(p.name_ar)}</h3>
         <div class="cost-line">سعر توريدك: ${fmt(p.supplier_price)} د.ع</div>
+        ${p.id&&window.QadahDisplay?QadahDisplay.swatchesHTML(p.id):''}
         ${p.id?`<label class="btn btn-ghost" style="margin-top:8px;cursor:pointer;font-size:13px">📷 تغيير الصورة<input type="file" accept="image/*" style="display:none" onchange="supplierChangeImage(event,'${p.id}')"></label>
-        <button class="btn btn-ghost" style="margin-top:6px;font-size:13px" onclick="openSupplierGallery('${p.id}')">🖼 صور إضافية</button>`:''}
+        ${window.QadahImageEditor&&p.image_url&&!String(p.image_url).startsWith('data:')?`<button class="btn btn-ghost" style="margin-top:6px;font-size:13px" onclick="supplierEditImage('${p.id}')">✂️ تعديل الصورة الحالية</button>`:''}
+        <button class="btn btn-ghost" style="margin-top:6px;font-size:13px" onclick="openSupplierGallery('${p.id}')">🖼 صور إضافية</button>
+        ${window.QadahDisplay&&!QadahDisplay.missing?`<button class="btn btn-ghost" style="margin-top:6px;font-size:13px" onclick="supplierColors('${p.id}')">🎨 الألوان</button>`:''}`:''}
       </div></div>`).join(''):'<div class="empty">لا منتجات مرتبطة بك بعد. تضيفها إدارة قدّاح.</div>';
 }
-async function supplierChangeImage(e,productId){
-  const f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value='';
+async function supplierChangeImage(e,productId,ready){
+  let f=ready||(e&&e.target.files&&e.target.files[0]); if(!f)return; if(e)e.target.value='';
+  if(!ready&&window.QadahImageEditor){f=await QadahImageEditor.open(f,{title:'تعديل الصورة قبل الرفع'});if(!f)return;}
   toast('جارٍ رفع الصورة...');
   const url=await uploadImage(f); if(!url)return;
   const {error}=await sb.rpc('set_product_image',{p_product_id:String(productId),p_image_url:url});
   if(error){toast(error.message||'تعذّر تغيير الصورة');return;}
   toast('تم تغيير الصورة');
   await loadSupplierSelf();
+}
+async function supplierEditImage(productId){
+  const p=myProducts.find(x=>x.id===productId); if(!p||!p.image_url)return;
+  const f=await QadahImageEditor.open(p.image_url,{title:'تعديل صورة: '+p.name_ar});
+  if(f)await supplierChangeImage(null,productId,f);
+}
+function supplierColors(productId){
+  const p=myProducts.find(x=>x.id===productId); if(!p)return;
+  QadahDisplay.openProductColors({sb,product:p,onSaved:renderSupplierSelf});
 }
 async function saveMyData(){
   if(!myRow)return;
@@ -740,7 +767,34 @@ function subscribe(){
     .subscribe();
 }
 
-async function fetchProducts(){const {data}=await sb.from('products').select('*').order('code');products=data||[];}
+async function fetchProducts(){const {data}=await sb.from('products').select('*').order('code');products=data||[];await loadDisplay();}
+/* ترتيب العرض والألوان والشريط (display.js) */
+async function loadDisplay(){
+  if(!window.QadahDisplay)return;
+  try{await QadahDisplay.load(sb);}catch(e){console.warn('display load',e);}
+  fillColorFilter();
+}
+function fillColorFilter(){
+  const sel=document.getElementById('colorFilter'); if(!sel||!window.QadahDisplay)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">كل الألوان</option><option value="__none">أصناف بلا لون محدد</option>'+
+    QadahDisplay.colors.map(c=>`<option value="${c.id}">${esc(c.name_ar)}${c.is_active?'':' (مخفي)'}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+  sel.classList.toggle('hidden',QadahDisplay.missing);
+}
+function openDisplayOrder(){
+  QadahDisplay.openOrder({sb,products,img:p=>p.image_url||PLACEHOLDER,onSaved:()=>{document.getElementById('sortBy').value='display';renderProducts();}});
+}
+function openColorsList(){
+  QadahDisplay.openColorsManager({sb,canDelete:ROLE==='admin',onSaved:()=>{fillColorFilter();renderProducts();if(colorPicker)colorPicker.refresh();}});
+}
+async function toggleBanner(id,btn){
+  if(!can.editPrice())return;
+  btn.disabled=true;
+  const on=!QadahDisplay.inBanner(id);
+  if(await QadahDisplay.setBanner(sb,id,on))toast(on?'أُضيف للشريط المتحرك':'أُزيل من الشريط المتحرك');
+  renderProducts();
+}
 async function fetchSuppliers(){const {data}=await sb.from('suppliers').select('*').order('name');suppliers=data||[];}
 async function fetchDrivers(){const {data}=await sb.from('drivers').select('*').order('name');drivers=data||[];}
 async function fetchCosts(){const {data}=await sb.from('product_costs').select('*');costMap={};(data||[]).forEach(c=>costMap[c.product_id]=c);}
@@ -1068,8 +1122,11 @@ function renderProducts(){
     const okO=!of||(of==='__none'?ids.length===0:ids.includes(of));
     const st=document.getElementById('stFilter').value, off=isOff(p);
     const okS=st==='all'||(st==='off'?off:!off);
-    return okQ&&(!cf||p.category===cf)&&okO&&okS;});
-  if(sort==='price-asc')list.sort((a,b)=>a.price-b.price);
+    const colf=document.getElementById('colorFilter').value, cids=window.QadahDisplay?QadahDisplay.colorIds(p.id):[];
+    const okC=!colf||(colf==='__none'?cids.length===0:cids.includes(colf));
+    return okQ&&(!cf||p.category===cf)&&okO&&okS&&okC;});
+  if(sort==='display'&&window.QadahDisplay)list.sort((a,b)=>QadahDisplay.sortKey(a)-QadahDisplay.sortKey(b)||(a.code||0)-(b.code||0));
+  else if(sort==='price-asc')list.sort((a,b)=>a.price-b.price);
   else if(sort==='price-desc')list.sort((a,b)=>b.price-a.price);
   else if(sort==='name')list.sort((a,b)=>(a.name_ar||'').localeCompare(b.name_ar||'','ar'));
   else list.sort((a,b)=>(a.code||0)-(b.code||0));
@@ -1099,7 +1156,16 @@ function cardHTML(p){
     costLine=`<div class="cost-line">🔒 التكلفة ${fmt(c)} · ربح فعلي ${fmt(profit)} د.ع</div>`;
   }
   const statusChip=(p.product_status&&p.product_status!=='نشط')?`<span class="status-chip status-off">${esc(p.product_status)}</span>`:'';
-  return `<div class="prod">
+  let dispHTML='', posHTML='';
+  if(window.QadahDisplay&&!QadahDisplay.missing){
+    const pos=isOff(p)?null:QadahDisplay.positionOf(p,products.filter(x=>!isOff(x)));
+    if(pos)posHTML=`<span class="qd-pos" title="ترتيب ظهوره للعملاء">#${pos}</span>`;
+    const on=QadahDisplay.inBanner(p.id);
+    const banner=can.editPrice()&&!isOff(p)?`<button type="button" class="qd-banner-b ${on?'on':''}" onclick="toggleBanner('${p.id}',this)" title="الشريط المتحرك في الصفحة الرئيسية">🎞 ${on?'في الشريط':'أضف للشريط'}</button>`
+      :(on?`<span class="qd-banner-b on" style="cursor:default">🎞 في الشريط</span>`:'');
+    dispHTML=QadahDisplay.swatchesHTML(p.id)+banner;
+  }
+  return `<div class="prod">${posHTML}
     <span class="star ${p.featured?'on':''}" ${starClick}>★</span>
     <img class="photo" loading="lazy" decoding="async" src="${p.image_url||PLACEHOLDER}" alt="${esc(p.name_ar)}" onerror="this.src='${PLACEHOLDER}'">
     <div class="body"><span class="tag">${esc(p.category||'')}</span>
@@ -1109,7 +1175,7 @@ function cardHTML(p){
       ${occLineHTML(p)}
       <div class="price">${fmt(p.price)} <span style="font-size:13px;font-weight:600">IQD</span></div>
       <div class="meta"><span>الربح <b>${p.margin}%</b></span></div>
-      ${costLine}
+      ${costLine}${dispHTML}
     </div>${actions}</div>`;
 }
 function renderStats(){
@@ -1164,7 +1230,39 @@ function openProduct(id){
   pickLocked=false;renderPickers();
   updateProfitHint();
   mountGallery(document.getElementById('p_gallery'),id||null,can.editPrice());
+  mountDisplayFields(id||null);
   document.getElementById('prodModal').classList.add('show');
+}
+/* الألوان + الشريط داخل نافذة الصنف. تُحفظ مع زر "حفظ". */
+let colorPicker=null, bannerAtOpen=false;
+function mountDisplayFields(id){
+  const ok=!!(window.QadahDisplay&&!QadahDisplay.missing);
+  document.getElementById('p_colorsField').classList.toggle('hidden',!ok);
+  document.getElementById('p_bannerField').classList.toggle('hidden',!ok);
+  colorPicker=null; if(!ok)return;
+  colorPicker=QadahDisplay.mountColorPicker(document.getElementById('p_colors'),
+    {selected:id?QadahDisplay.colorIds(id):[],disabled:!can.editPrice(),onManage:can.editPrice()?openColorsList:null});
+  bannerAtOpen=id?QadahDisplay.inBanner(id):false;
+  const cb=document.getElementById('p_banner'); cb.checked=bannerAtOpen; cb.disabled=!can.editPrice();
+}
+async function saveDisplayFields(productId){
+  if(!colorPicker||!can.editPrice())return true;
+  let ok=true;
+  if(colorPicker.changed())ok=await QadahDisplay.saveColors(sb,productId,colorPicker.get())&&ok;
+  const b=document.getElementById('p_banner').checked;
+  if(b!==bannerAtOpen)ok=await QadahDisplay.setBanner(sb,productId,b)&&ok;
+  return ok;
+}
+/* محرر الصورة (imgedit.js): يفتح عند اختيار صورة جديدة، أو لتعديل الصورة الحالية */
+async function editCoverImage(){
+  if(!window.QadahImageEditor){toast('تعذّر تحميل ملف imgedit.js');return;}
+  const id=p_id.value, p=id?products.find(x=>x.id===id):null;
+  const src=pickedFile||(p&&p.image_url&&!p.image_url.startsWith('data:')?p.image_url:null);
+  if(!src){toast('اختر صورة أولاً');return;}
+  const f=await QadahImageEditor.open(src,{title:'تعديل صورة: '+(p_nameAr.value||'صنف جديد')});
+  if(!f)return;
+  pickedFile=f;document.getElementById('p_preview').src=URL.createObjectURL(f);
+  toast('الصورة جاهزة، اضغط حفظ لتطبيقها');
 }
 document.addEventListener('input',e=>{if(e.target&&['p_cost','p_price','p_margin'].includes(e.target.id))recalcPricing(e.target.id);});
 function roundTo(n,step){return Math.round(n/step)*step;}
@@ -1204,7 +1302,13 @@ function openSupplierGallery(productId){
   mountGallery(document.getElementById('galBox'),productId,true);
   document.getElementById('galModal').classList.add('show');
 }
-function pickImg(e){const f=e.target.files[0];if(!f)return;pickedFile=f;document.getElementById('p_preview').src=URL.createObjectURL(f);}
+async function pickImg(e){const f=e.target.files[0];if(!f)return;e.target.value='';
+  if(window.QadahImageEditor){
+    const out=await QadahImageEditor.open(f,{title:'تعديل الصورة قبل الرفع'});
+    if(!out)return;   // إلغاء: لا تغيير على الصورة
+    pickedFile=out;
+  }else pickedFile=f;
+  document.getElementById('p_preview').src=URL.createObjectURL(pickedFile);}
 /* ===== ضغط الصور قبل الرفع =====
    كل صورة تُصغَّر إلى عرض/ارتفاع أقصى IMG_MAX_SIDE وتُحوَّل إلى WebP قبل رفعها.
    صورة كاميرا بحجم 8-10MB تصبح عادة 150-350KB بجودة لا يُلاحظ فرقها. */
@@ -1231,7 +1335,7 @@ async function compressImage(blob){
 }
 async function uploadImage(file){
   let blob=file, ext=(file.name&&file.name.split('.').pop()||'jpg').toLowerCase(), type=file.type||'image/jpeg';
-  try{const c=await compressImage(file);
+  if(!file._qadahEdited)try{const c=await compressImage(file);   // صورة من محرر الصور جاهزة، لا نضغطها مرتين
     if(c.blob.size<file.size){blob=c.blob;ext=c.ext;type=c.blob.type;}
   }catch(e){console.warn('compress skipped',e);}   // إن فشل الضغط نرفع الأصل بدل أن نوقف العمل
   const path=`p_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext}`;
@@ -1381,7 +1485,8 @@ async function saveProduct(){
         await sb.from('product_costs').upsert({product_id:productId,supplier_id,supplier_price,updated_at:new Date().toISOString()});
       }
     }
-    toast('تم الحفظ');close_('prodModal');
+    const dispOk=await saveDisplayFields(productId);
+    toast(dispOk?'تم الحفظ':'حُفظ الصنف، لكن تعذّر حفظ الألوان أو الشريط');close_('prodModal');
     await fetchProducts(); if(can.seeCost())await fetchCosts(); renderProducts();
   }catch(e){toast(e.message||'خطأ أثناء الحفظ');}
   btn.disabled=false;btn.textContent='حفظ';
@@ -1725,11 +1830,14 @@ function exportSuppliersCSV(){download('suppliers.csv',['Supplier Name','Shop Ad
 function exportDriversCSV(){download('drivers.csv',['Driver Name','Car Number','Phone Number','Car Type','Model','Status','Notes'],
   drivers.map(d=>[d.name,d.car_number,d.phone,d.car_type,d.model,d.status,d.notes]));}
 function exportProductsCSV(){
-  const head=['الرقم','الاسم عربي','الاسم إنجليزي','السعر','الربح%','النوع','حالة المنتج','المناسبات','لمن الهدية','الوسم'];
+  const head=['الرقم','الاسم عربي','الاسم إنجليزي','السعر','الربح%','النوع','حالة المنتج','المناسبات','لمن الهدية','الوسم','الألوان','ترتيب العرض','في الشريط'];
   const withCost=can.seeCost(); if(withCost){head.push('التكلفة','المورد');}
+  const QD=window.QadahDisplay;
   const rows=[...products].sort((a,b)=>a.code-b.code).map(p=>{
     const r=[p.code,p.name_ar,p.name_en,p.price,p.margin,p.category,p.product_status,
-      tagNames(occasions,p.occasion_ids).join(' / '),tagNames(recipients,p.recipient_ids).join(' / '),BADGE_AR[p.badge]||''];
+      tagNames(occasions,p.occasion_ids).join(' / '),tagNames(recipients,p.recipient_ids).join(' / '),BADGE_AR[p.badge]||'',
+      QD?QD.colorIds(p.id).map(id=>(QD.colorById(id)||{}).name_ar).filter(Boolean).join(' / '):'',
+      QD&&!isOff(p)?(QD.positionOf(p,products.filter(x=>!isOff(x)))||''):'',QD&&QD.inBanner(p.id)?'نعم':''];
     if(withCost){const c=costMap[p.id]||{};const sup=suppliers.find(s=>s.id===c.supplier_id);r.push(c.supplier_price??'',sup?sup.name:'');}
     return r;});
   download('catalog.csv',head,rows);
