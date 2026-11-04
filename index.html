@@ -1288,7 +1288,7 @@ function updateProfitHint(){
   const price=parseInt(document.getElementById('p_price').value,10)||0;
   const cost=parseInt(document.getElementById('p_cost').value,10);
   const h=document.getElementById('p_profitHint');
-  if(!isNaN(cost)&&cost>=0){const pr=price-cost;h.textContent=`الربح الفعلي = ${fmt(pr)} د.ع`+(price>0?` (${Math.round(pr/price*100)}%)`:'');}
+  if(!isNaN(cost)&&cost>=0){const pr=price-cost;h.textContent=`الربح الفعلي = ${fmt(pr)} د.ع`+(cost>0?` (${Math.round(pr/cost*100)}%)`:'');}
   else h.textContent='';
 }
 /* معرض الصور الإضافية (gallery.js) */
