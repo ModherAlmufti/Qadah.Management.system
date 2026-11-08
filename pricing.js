@@ -55,7 +55,7 @@
     var c = cost && cost.supplier_price != null ? String(cost.supplier_price) : '';
     var o = { cost: c, margin: p.margin == null ? '' : String(p.margin), price: String(p.price == null ? '' : p.price) };
     return {
-      id: p.id, code: p.code, name: p.name_ar || '', status: p.product_status || '', img: p.image_url || '',
+      id: p.id, code: p.code, name: p.name_ar || '', nameEn: p.name_en || '', status: p.product_status || '', img: p.image_url || '',
       supplierId: cost ? cost.supplier_id : null, hasCostRow: !!cost,
       orig: o, cur: { cost: o.cost, margin: o.margin, price: o.price }, err: '', busy: false
     };
@@ -206,7 +206,7 @@
     return xlsxPromise;
   }
 
-  var HEAD = ['رقم الصنف', 'اسم الصنف', 'الحالة', 'المورد', 'التكلفة', 'نسبة الربح %', 'السعر'];
+  var HEAD = ['رقم الصنف', 'اسم الصنف', 'الاسم بالإنجليزي', 'الحالة', 'المورد', 'التكلفة', 'نسبة الربح %', 'السعر'];
 
   function supplierName(r) {
     var list = (opts.getSuppliers && opts.getSuppliers()) || [];
@@ -215,7 +215,7 @@
   }
   function exportRows() {
     return S.rows.map(function (r) {
-      return [r.code, r.name, r.status, supplierName(r),
+      return [r.code, r.name, r.nameEn, r.status, supplierName(r),
         r.cur.cost === '' ? '' : Number(r.cur.cost),
         r.cur.margin === '' ? '' : Number(r.cur.margin),
         isNum(r.cur.price) ? Number(r.cur.price) : r.cur.price];
@@ -234,7 +234,7 @@
     try {
       var X = await loadXlsx();
       var ws = X.utils.aoa_to_sheet([HEAD].concat(rows));
-      ws['!cols'] = [{ wch: 10 }, { wch: 34 }, { wch: 10 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+      ws['!cols'] = [{ wch: 10 }, { wch: 34 }, { wch: 34 }, { wch: 10 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       var help = X.utils.aoa_to_sheet([
         ['كيف تستخدم هذا الملف'],
         ['1. عدّل الأعمدة: التكلفة، نسبة الربح %، السعر. لا تغيّر عمود "رقم الصنف" لأنه المفتاح.'],
