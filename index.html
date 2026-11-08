@@ -824,7 +824,7 @@ function switchTab(t){
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
   else if(t==='finance'&&ROLE==='admin'&&window.QadahFinance)QadahFinance.refresh();
   else if(t==='pricing'&&can.editPrice()&&window.QadahPricing){
-    if(!pricingMounted){pricingMounted=true;QadahPricing.mount(document.getElementById('pricing-root'),{sb,
+    if(!pricingMounted){pricingMounted=true;QadahPricing.mount(document.getElementById('pricing-root'),{sb,canEditNames:ROLE==='admin',
       getProducts:()=>products,getCosts:()=>costMap,getSuppliers:()=>suppliers,
       onSaved:async()=>{await fetchProducts();if(can.seeCost())await fetchCosts();renderProducts();}});}
     else QadahPricing.refresh();

@@ -53,15 +53,15 @@
   /* ---------- rows ---------- */
   function makeRow(p, cost) {
     var c = cost && cost.supplier_price != null ? String(cost.supplier_price) : '';
-    var o = { cost: c, margin: p.margin == null ? '' : String(p.margin), price: String(p.price == null ? '' : p.price) };
+    var o = { cost: c, margin: p.margin == null ? '' : String(p.margin), price: String(p.price == null ? '' : p.price), nameEn: p.name_en || '' };
     return {
       id: p.id, code: p.code, name: p.name_ar || '', nameEn: p.name_en || '', status: p.product_status || '', img: p.image_url || '',
       supplierId: cost ? cost.supplier_id : null, hasCostRow: !!cost,
-      orig: o, cur: { cost: o.cost, margin: o.margin, price: o.price }, err: '', busy: false
+      orig: o, cur: { cost: o.cost, margin: o.margin, price: o.price, nameEn: o.nameEn }, err: '', busy: false
     };
   }
   function isDirty(r) {
-    return r.cur.cost !== r.orig.cost || r.cur.margin !== r.orig.margin || r.cur.price !== r.orig.price;
+    return r.cur.cost !== r.orig.cost || r.cur.margin !== r.orig.margin || r.cur.price !== r.orig.price || r.cur.nameEn !== r.orig.nameEn;
   }
   function dirtyRows() { return S.rows.filter(isDirty); }
 
@@ -97,6 +97,7 @@
     if (!/^\d+$/.test(c.price)) return 'السعر يجب أن يكون رقماً صحيحاً';
     if (c.cost !== '' && !/^\d+$/.test(c.cost)) return 'التكلفة يجب أن تكون رقماً صحيحاً';
     if (c.margin !== '' && !isNum(c.margin)) return 'نسبة الربح غير صحيحة';
+    if (c.nameEn.length > 200) return 'الاسم الإنجليزي طويل جداً';
     return '';
   }
 
@@ -108,16 +109,18 @@
     var ok = true;
     try {
       var c = r.cur, o = r.orig;
-      if (c.price !== o.price || c.margin !== o.margin) {
+      if (c.price !== o.price || c.margin !== o.margin || c.nameEn !== o.nameEn) {
         var upd = {};
         if (c.price !== o.price) upd.price = parseInt(c.price, 10);
         if (c.margin !== o.margin && c.margin !== '') upd.margin = Math.round(Number(c.margin));
+        if (c.nameEn !== o.nameEn) upd.name_en = c.nameEn;
         if (Object.keys(upd).length) {
           var res = await sb.from('products').update(upd).eq('id', r.id).select('id');
           if (res.error) throw res.error;
           if (!res.data || !res.data.length) throw new Error('لا توجد صلاحية لتعديل هذا الصنف');
           if (upd.price != null) o.price = String(upd.price);
           if (upd.margin != null) o.margin = String(upd.margin);
+          if (upd.name_en != null) o.nameEn = upd.name_en;
         }
         c.price = o.price; c.margin = o.margin;     // margin cleared by hand goes back to the saved one
       }
@@ -187,7 +190,7 @@
   function discardAll() {
     var n = dirtyRows().length; if (!n || S.saving) return;
     if (!window.confirm('التراجع عن ' + n + ' تعديل غير محفوظ؟')) return;
-    S.rows.forEach(function (r) { r.cur = { cost: r.orig.cost, margin: r.orig.margin, price: r.orig.price }; r.err = ''; });
+    S.rows.forEach(function (r) { r.cur = { cost: r.orig.cost, margin: r.orig.margin, price: r.orig.price, nameEn: r.orig.nameEn }; r.err = ''; });
     setMsg(null); renderBody(); paintBar();
   }
 
@@ -215,7 +218,7 @@
   }
   function exportRows() {
     return S.rows.map(function (r) {
-      return [r.code, r.name, r.nameEn, r.status, supplierName(r),
+      return [r.code, r.name, r.cur.nameEn, r.status, supplierName(r),
         r.cur.cost === '' ? '' : Number(r.cur.cost),
         r.cur.margin === '' ? '' : Number(r.cur.margin),
         isNum(r.cur.price) ? Number(r.cur.price) : r.cur.price];
@@ -240,7 +243,7 @@
         ['1. عدّل الأعمدة: التكلفة، نسبة الربح %، السعر. لا تغيّر عمود "رقم الصنف" لأنه المفتاح.'],
         ['2. غيّر عموداً واحداً فقط من الثلاثة لكل صنف، والباقي يُحسب عند الاستيراد: السعر = التكلفة × (1 + النسبة)، ويُقرَّب لأقرب 500.'],
         ['3. إن غيّرت السعر، تُحسب النسبة من السعر والتكلفة. وإن غيّرت الاثنين معاً فالسعر هو المعتمد.'],
-        ['4. الخلية الفارغة تعني "بدون تغيير".'],
+        ['4. يمكنك تعديل عمود "الاسم بالإنجليزي" أيضاً (للمدير فقط). الخلية الفارغة تعني "بدون تغيير" في كل الأعمدة.'],
         ['5. ارفع الملف من زر "استيراد Excel". يظهر الجدول معدّلاً دون حفظ، ثم اضغط "حفظ الكل".']
       ]);
       help['!cols'] = [{ wch: 110 }];
@@ -263,6 +266,7 @@
   function headerKey(h) {
     var s = String(h == null ? '' : h).toLowerCase().replace(/[\s%()٪_\-]/g, '');
     if (!s) return null;
+    if (s.indexOf('إنجليزي') >= 0 || s.indexOf('انجليزي') >= 0 || s.indexOf('english') >= 0 || s.indexOf('nameen') >= 0 || s.indexOf('name_en') >= 0) return 'nameEn';
     if (s.indexOf('رقم') >= 0 || s.indexOf('الكود') >= 0 || s === 'code' || s === 'id' || s.indexOf('item') >= 0) return 'code';
     if (s.indexOf('تكلفة') >= 0 || s.indexOf('cost') >= 0) return 'cost';
     if (s.indexOf('نسبة') >= 0 || s.indexOf('margin') >= 0 || s.indexOf('ربح') >= 0) return 'margin';
@@ -272,7 +276,7 @@
 
   async function importFile(file) {
     if (!file) return;
-    var rep = { matched: 0, changed: 0, unknown: [], invalid: [] };
+    var rep = { matched: 0, changed: 0, unknown: [], invalid: [], names: 0, namesSkipped: 0 };
     try {
       var X = await loadXlsx(), wb;
       if (/\.csv$/i.test(file.name)) wb = X.read(await file.text(), { type: 'string' });
@@ -283,7 +287,7 @@
       var cols = {}, hdr = data[0];
       hdr.forEach(function (h, i) { var k = headerKey(h); if (k && cols[k] == null) cols[k] = i; });
       if (cols.code == null) throw new Error('لم أجد عمود "رقم الصنف" في الصف الأول');
-      if (cols.cost == null && cols.margin == null && cols.price == null) throw new Error('لم أجد أعمدة التكلفة أو النسبة أو السعر');
+      if (cols.cost == null && cols.margin == null && cols.price == null && cols.nameEn == null) throw new Error('لم أجد أعمدة التكلفة أو النسبة أو السعر أو الاسم الإنجليزي');
       var byCode = {};
       S.rows.forEach(function (r) { byCode[String(r.code)] = r; });
 
@@ -306,13 +310,23 @@
           if (v === r.orig[f]) return;                         // same as the saved value = not changed in the file
           applyEdit(r, f, v);
         });
+        if (cols.nameEn != null) {
+          var nm = String(row[cols.nameEn] == null ? '' : row[cols.nameEn]).replace(/\s+/g, ' ').trim();
+          if (nm !== '' && nm !== r.orig.nameEn) {
+            if (!opts.canEditNames) rep.namesSkipped++;
+            else if (nm.length > 200) rep.invalid.push(r.code + ' (name)');
+            else { r.cur.nameEn = nm; rep.names++; }
+          }
+        }
         if (JSON.stringify(r.cur) !== before) rep.changed++;
       }
       renderBody(); paintBar();
       var t = 'قُرئ الملف: ' + rep.matched + ' صنف مطابق، ' + rep.changed + ' منها تغيّرت. التعديلات غير محفوظة حتى تضغط "حفظ الكل".';
+      if (rep.names) t += ' أسماء إنجليزية معدّلة: ' + rep.names + '.';
+      if (rep.namesSkipped) t += ' تعديل الأسماء الإنجليزية للمدير فقط، فتم تجاهل ' + rep.namesSkipped + ' اسم.';
       if (rep.unknown.length) t += ' أرقام غير موجودة (تم تجاهلها): ' + rep.unknown.slice(0, 8).join('، ') + (rep.unknown.length > 8 ? '…' : '') + '.';
       if (rep.invalid.length) t += ' قيم غير صالحة (تم تجاهلها): ' + rep.invalid.slice(0, 8).join('، ') + (rep.invalid.length > 8 ? '…' : '') + '.';
-      setMsg(rep.unknown.length || rep.invalid.length ? 'warn' : 'ok', t);
+      setMsg(rep.unknown.length || rep.invalid.length || rep.namesSkipped ? 'warn' : 'ok', t);
       if (rep.changed) { S.view = 'changed'; var sel = root.querySelector('#qpView'); if (sel) sel.value = 'changed'; renderBody(); }
     } catch (e) {
       setMsg('err', 'تعذّر قراءة الملف: ' + (e && e.message ? e.message : e));
@@ -348,6 +362,8 @@
     '.qp-name{display:flex;gap:10px;align-items:center;min-width:230px}',
     '.qp-name img{width:42px;height:42px;border-radius:10px;object-fit:cover;background:var(--card,#f5ede0);flex:none}',
     '.qp-name small{display:block;color:var(--ink-soft,#8f8781);font-size:12px}',
+    '.qp-en{text-align:left}',
+    '.qp-en.ch{color:var(--rose-strong,#c98578);font-weight:700}',
     '.qp-err{display:block;color:var(--danger,#B23A3A);font-size:12px;font-weight:700}',
     '.qp input.qp-in{width:112px;padding:8px 10px;border:1px solid var(--line,#ece2d4);border-radius:10px;font:inherit;text-align:left;direction:ltr;background:#fff;color:inherit}',
     '.qp input.qp-in.m{width:78px}',
@@ -379,7 +395,7 @@
     if (v === 'nocost' && num(r.cur.cost) > 0) return false;
     if (S.q) {
       var q = S.q.toLowerCase();
-      if ((r.name + ' ' + r.code).toLowerCase().indexOf(q) < 0) return false;
+      if ((r.name + ' ' + r.cur.nameEn + ' ' + r.code).toLowerCase().indexOf(q) < 0) return false;
     }
     return true;
   }
@@ -388,7 +404,7 @@
     return '<tr data-id="' + esc(r.id) + '">' +
       '<td class="qp-code">' + esc(r.code) + '</td>' +
       '<td><div class="qp-name">' + (r.img ? '<img loading="lazy" decoding="async" alt="" src="' + esc(r.img) + '">' : '<img alt="">') +
-      '<div><b>' + esc(r.name) + '</b><small>' + esc([supplierName(r), r.status && r.status !== 'نشط' ? r.status : ''].filter(Boolean).join(' · ')) + '</small>' +
+      '<div><b>' + esc(r.name) + '</b><small>' + esc([supplierName(r), r.status && r.status !== 'نشط' ? r.status : ''].filter(Boolean).join(' · ')) + '</small><small class="qp-en" data-n="en" dir="ltr"></small>' +
       '<span class="qp-err"></span></div></div></td>' +
       '<td><input class="qp-in" data-f="cost" inputmode="numeric" autocomplete="off" aria-label="التكلفة"><span class="qp-note" data-n="cost"></span></td>' +
       '<td><input class="qp-in m" data-f="margin" inputmode="decimal" autocomplete="off" aria-label="نسبة الربح"><span class="qp-warn" data-n="warn" hidden>⚠</span></td>' +
@@ -420,6 +436,10 @@
       inp.disabled = r.busy || S.saving;
     });
     tr.querySelector('.qp-err').textContent = r.err || '';
+    var en = tr.querySelector('[data-n="en"]');
+    en.textContent = r.cur.nameEn;
+    en.classList.toggle('ch', r.cur.nameEn !== r.orig.nameEn);
+    en.title = r.cur.nameEn !== r.orig.nameEn ? 'كان: ' + (r.orig.nameEn || '(فارغ)') : '';
     var cost = num(r.cur.cost), price = num(r.cur.price);
     var oPrice = num(r.orig.price);
     var pn = tr.querySelector('[data-n="price"]');
@@ -457,7 +477,7 @@
     root.innerHTML =
       '<div class="qp">' +
       '<h2>التسعير الجماعي</h2>' +
-      '<div class="qp-sub">عدّل التكلفة أو نسبة الربح أو السعر مباشرة، والباقي يُحسب تلقائياً. نسبة الربح على التكلفة: السعر = التكلفة × (1 + النسبة)، ويُقرَّب لأقرب 500. التعديلات لا تُحفظ حتى تضغط حفظ.</div>' +
+      '<div class="qp-sub">عدّل التكلفة أو نسبة الربح أو السعر مباشرة، والباقي يُحسب تلقائياً. الأسماء الإنجليزية تُعدَّل من ملف Excel. نسبة الربح على التكلفة: السعر = التكلفة × (1 + النسبة)، ويُقرَّب لأقرب 500. التعديلات لا تُحفظ حتى تضغط حفظ.</div>' +
       '<div class="qp-tools">' +
       '<input type="search" id="qpSearch" placeholder="بحث بالاسم أو الرقم" aria-label="بحث">' +
       '<select id="qpView" aria-label="عرض"><option value="live">الأصناف المعروضة</option><option value="stopped">الأصناف الموقوفة</option><option value="all">كل الأصناف</option><option value="nocost">بدون تكلفة</option><option value="changed">المعدّلة فقط</option></select>' +
