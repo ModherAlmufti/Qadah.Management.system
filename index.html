@@ -222,6 +222,7 @@
   <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">🏪 الموردون</button>
   <button class="tab" data-tab="drivers" onclick="switchTab('drivers')">🚚 السائقون</button>
   <button class="tab hidden" id="tabDeliveryBtn" data-tab="delivery" onclick="switchTab('delivery')">🕒 التوصيل</button>
+  <button class="tab hidden" id="tabPricingBtn" data-tab="pricing" onclick="switchTab('pricing')">💲 التسعير الجماعي</button>
   <button class="tab hidden" id="tabUsersBtn" data-tab="users" onclick="switchTab('users')">👥 المستخدمون</button>
   <button class="tab hidden" id="tabFinanceBtn" data-tab="finance" onclick="switchTab('finance')">💰 المالية</button>
   <a class="tab hidden" id="tabPaymentsBtn" href="payments.html" style="text-decoration:none;display:inline-block">💳 مدفوعات الموقع</a>
@@ -346,6 +347,11 @@
 <!-- DELIVERY (فترات التوصيل، موعد الإغلاق، المناطق) — المحتوى يُبنى من delivery.js -->
 <section id="tab-delivery" class="hidden">
   <div id="delivery-root" style="padding:16px 24px 40px"></div>
+</section>
+
+<!-- PRICING (المدير + مسؤول الأسعار) — المحتوى يُبنى من pricing.js -->
+<section id="tab-pricing" class="hidden">
+  <div id="pricing-root" style="padding:16px 24px 40px"></div>
 </section>
 
 <!-- FINANCE (المدير فقط) — المحتوى يُبنى من finance.js -->
@@ -534,6 +540,7 @@
 <script src="finance.js"></script>
 <script src="gallery.js"></script>
 <script src="delivery.js"></script>
+<script src="pricing.js"></script>
 <script src="display.js"></script>
 <script src="imgedit.js"></script>
 <script>
@@ -671,6 +678,7 @@ async function onSignedIn(){
   document.getElementById('tabPaymentsBtn').classList.toggle('hidden',ROLE!=='admin');
   if(ROLE==='admin'&&window.QadahFinance)QadahFinance.mount(document.getElementById('finance-root'),sb);
   document.getElementById('tabDeliveryBtn').classList.toggle('hidden',!window.QadahDelivery);
+  document.getElementById('tabPricingBtn').classList.toggle('hidden',!(can.editPrice()&&window.QadahPricing));
   document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
   document.getElementById('recAdd').classList.toggle('hidden',!can.addTag());
   ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
@@ -810,17 +818,23 @@ async function fetchOrders(){const {data}=await sb.from('orders').select('*').or
 function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['catalog','occasions','orders','suppliers','drivers','users','finance','delivery'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
+  ['catalog','occasions','orders','suppliers','drivers','users','finance','delivery','pricing'].forEach(x=>document.getElementById('tab-'+x).classList.toggle('hidden',x!==t));
   if(t==='catalog')renderProducts();else if(t==='occasions')renderTags();else if(t==='orders')renderOrders();
   else if(t==='suppliers')renderSuppliers();
   else if(t==='drivers')renderDrivers();else if(t==='users')renderUsers();
   else if(t==='finance'&&ROLE==='admin'&&window.QadahFinance)QadahFinance.refresh();
+  else if(t==='pricing'&&can.editPrice()&&window.QadahPricing){
+    if(!pricingMounted){pricingMounted=true;QadahPricing.mount(document.getElementById('pricing-root'),{sb,
+      getProducts:()=>products,getCosts:()=>costMap,getSuppliers:()=>suppliers,
+      onSaved:async()=>{await fetchProducts();if(can.seeCost())await fetchCosts();renderProducts();}});}
+    else QadahPricing.refresh();
+  }
   else if(t==='delivery'&&window.QadahDelivery){
     if(!deliveryMounted){deliveryMounted=true;QadahDelivery.mount(document.getElementById('delivery-root'),sb,{canEdit:ROLE==='admin'});}
     else QadahDelivery.refresh();
   }
 }
-let deliveryMounted=false;
+let deliveryMounted=false, pricingMounted=false;
 function renderAll(){renderProducts();renderTags();renderOrders();renderSuppliers();renderDrivers();if(ROLE==='admin')renderUsers();}
 
 /* ============================================================
