@@ -1,8 +1,8 @@
 /* =====================================================================
    Qadah dashboard: Delivery tab (التوصيل) — revamp step 2(b), part 3.
-   Manages: delivery_slots, delivery_settings (same-day cutoff), delivery_areas.
+   Manages: delivery_slots, delivery_settings (same-day cutoff), delivery_governorates, delivery_areas.
    Reads delivery_settings_public for the current Baghdad time.
-   Requires 2026-10-20_db_delivery-slots-areas_v1.sql.
+   Requires 2026-10-20_db_delivery-slots-areas_v1.sql and (for governorates) 2026-11-09_db_delivery-governorates_v1.sql.
 
    Staff (admin / editor / viewer) can read. Only the admin can change anything
    (RLS enforces it in the database too).
@@ -16,8 +16,8 @@
   'use strict';
 
   var sb = null, root = null, canEdit = false, busy = false;
-  var S = { slots: [], areas: [], settings: null, pub: null };
-  var edit = { slot: null, area: null }; // id being edited, or 'new'
+  var S = { slots: [], areas: [], govs: [], gov: null, settings: null, pub: null };
+  var edit = { slot: null, area: null, gov: null }; // id being edited, or 'new'
 
   /* ---------- helpers ---------- */
   function esc(s) {
@@ -42,6 +42,8 @@
   function errText(e) {
     if (!e) return 'حدث خطأ';
     var m = String(e.message || ''), c = String(e.code || '');
+    if (/default governorate must be active/.test(m)) return 'المحافظة الافتراضية يجب أن تبقى فعّالة.';
+    if (c === '23503' || /foreign key/i.test(m)) return 'لا يمكن حذف محافظة فيها مناطق. احذف مناطقها أو أوقفها بدل ذلك.';
     if (c === '23505' || /duplicate key|unique/i.test(m)) return 'الاسم موجود مسبقاً.';
     if (/delivery_slots_time_range/.test(m)) return 'وقت النهاية يجب أن يكون بعد وقت البداية.';
     if (/not_blank/.test(m)) return 'الاسم مطلوب.';
@@ -84,6 +86,7 @@
     '.dlv input,.dlv textarea{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--dl);border-radius:10px;background:#fff;color:var(--di)}',
     '.dlv input[type=time]{direction:ltr;text-align:right;min-width:110px}',
     '.dlv input[type=checkbox]{width:18px;height:18px;accent-color:var(--dn)}',
+    '.dlv select{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--dl);border-radius:10px;background:#fff;color:var(--di);max-width:100%}',
     '.dlv input.en{direction:ltr;text-align:left}',
     '.dlv textarea{min-height:90px;resize:vertical;width:100%;box-sizing:border-box}',
     '.dlv .ltr{direction:ltr;unicode-bidi:isolate;display:inline-block;font-variant-numeric:tabular-nums;white-space:nowrap}',
@@ -121,11 +124,12 @@
     root.innerHTML =
       '<div class="dlv">' +
       '<div class="dlv-head"><div><h2>إعدادات التوصيل</h2>' +
-      '<p>فترات التوصيل وموعد إغلاق طلبات اليوم ومناطق بغداد. تظهر للعملاء عند الطلب، والسيرفر يرفض أي فترة أو منطقة غير فعّالة.</p></div>' +
+      '<p>فترات التوصيل وموعد إغلاق طلبات اليوم والمحافظات والمناطق. تظهر للعملاء عند الطلب، والسيرفر يرفض أي فترة أو منطقة غير فعّالة.</p></div>' +
       '<button data-act="refresh" data-keep="1">↻ تحديث</button></div>' +
       (canEdit ? '' : '<div class="dlv-ro">عرض فقط. التعديل للمدير.</div>') +
       '<div class="dlv-msg" role="status"></div>' +
       '<div class="dlv-card dlv-sameday"></div>' +
+      '<div class="dlv-card dlv-govs"></div>' +
       '<div class="dlv-grid">' +
       '<div class="dlv-card dlv-slots"></div>' +
       '<div class="dlv-card dlv-areas"></div>' +
@@ -138,7 +142,8 @@
       sb.from('delivery_slots').select('*').order('sort_order').order('start_time'),
       sb.from('delivery_areas').select('*').order('sort_order').order('name_ar'),
       sb.from('delivery_settings').select('*').eq('id', 1).maybeSingle(),
-      sb.from('delivery_settings_public').select('*').maybeSingle()
+      sb.from('delivery_settings_public').select('*').maybeSingle(),
+      sb.from('delivery_governorates').select('*').order('sort_order').order('name_ar')
     ]).then(function (r) {
       var err = r[0].error || r[1].error || r[2].error;
       if (err) throw err;
@@ -146,6 +151,12 @@
       S.areas = r[1].data || [];
       S.settings = r[2].data || null;
       S.pub = r[3].error ? null : (r[3].data || null);
+      // governorates are optional: if the SQL file was not run yet the screen works as before (Baghdad only)
+      S.govs = r[4].error ? [] : (r[4].data || []);
+      if (!S.govs.some(function (g) { return g.id === S.gov; })) {
+        var d = S.govs.find(function (g) { return g.is_default; }) || S.govs[0];
+        S.gov = d ? d.id : null;
+      }
     });
   }
 
@@ -160,7 +171,7 @@
   }
 
   /* ---------- render ---------- */
-  function render() { renderSameDay(); renderSlots(); renderAreas(); }
+  function render() { renderSameDay(); renderGovs(); renderSlots(); renderAreas(); }
 
   function renderSameDay() {
     var box = $('.dlv-sameday'), s = S.settings, p = S.pub;
@@ -179,6 +190,50 @@
       '</div>' +
       '<p class="dlv-hint">بعد هذا الموعد (بتوقيت بغداد) لا يقبل السيرفر طلبات لنفس اليوم، ويبقى الطلب لأي يوم بعده متاحاً. ' +
       'ولا تُقبل فترة انتهى وقتها اليوم. يُطبَّق على الطلبات التي ترسل فترة من القائمة (الواجهات الجديدة).</p>';
+  }
+
+  function govName(id) { var g = S.govs.find(function (x) { return x.id === id; }); return g ? g.name_ar : ''; }
+  function govAreas() {                       // areas of the governorate picked in the areas card
+    if (!S.govs.length) return S.areas;
+    return S.areas.filter(function (a) { return a.governorate_id === S.gov; });
+  }
+
+  function govRowView(g) {
+    var cnt = S.areas.filter(function (a) { return a.governorate_id === g.id; }).length;
+    return '<tr class="' + (g.is_active ? '' : 'off') + '">' +
+      '<td><b>' + esc(g.name_ar) + '</b>' + (g.is_default ? ' <span class="dlv-pill ok">الافتراضية</span>' : '') +
+      (g.name_en ? '<div class="dlv-hint ltr">' + esc(g.name_en) + '</div>' : '') + '</td>' +
+      '<td><span class="ltr">' + cnt + '</span></td>' +
+      '<td>' + (canEdit
+        ? '<label class="chk"><input type="checkbox" data-act="gov-active" data-id="' + g.id + '"' + (g.is_active ? ' checked' : '') + (g.is_default ? ' disabled data-keep="1"' : '') + '> <span class="hide-sm">' + (g.is_active ? 'مفتوحة للطلب' : 'مغلقة (قريباً)') + '</span></label>'
+        : '<span class="dlv-pill ' + (g.is_active ? 'ok' : 'mute') + '">' + (g.is_active ? 'مفتوحة للطلب' : 'مغلقة (قريباً)') + '</span>') + '</td>' +
+      (canEdit ? '<td class="act"><button class="lnk" data-act="gov-edit" data-id="' + g.id + '">تعديل</button>' +
+        (g.is_default ? '' : '<button class="lnk del" data-act="gov-del" data-id="' + g.id + '">حذف</button>') + '</td>' : '') +
+      '</tr>';
+  }
+  function govRowEdit(g) {
+    g = g || { name_ar: '', name_en: '' };
+    return '<tr class="ed" data-form="gov" data-id="' + (g.id || 'new') + '">' +
+      '<td><input class="f-name" placeholder="اسم المحافظة" value="' + esc(g.name_ar) + '" maxlength="40">' +
+      '<input class="f-name-en en" placeholder="English (optional)" value="' + esc(g.name_en || '') + '" maxlength="40" style="margin-top:6px"></td>' +
+      '<td></td><td></td>' +
+      '<td class="act"><button class="pri" data-act="gov-save">حفظ</button> <button data-act="gov-cancel">إلغاء</button></td>' +
+      '</tr>';
+  }
+  function renderGovs() {
+    var box = $('.dlv-govs');
+    if (!S.govs.length) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    var open = S.govs.filter(function (g) { return g.is_active; }).length;
+    var rows = S.govs.map(function (g) { return edit.gov === g.id ? govRowEdit(g) : govRowView(g); }).join('');
+    if (edit.gov === 'new') rows += govRowEdit(null);
+    box.innerHTML =
+      '<div class="dlv-head"><h3>المحافظات <span class="dlv-hint">(<span class="ltr">' + open + '</span> مفتوحة من <span class="ltr">' + S.govs.length + '</span>)</span></h3>' +
+      (canEdit ? '<button class="pri" data-act="gov-add"' + (edit.gov ? ' disabled' : '') + '>+ محافظة</button>' : '') + '</div>' +
+      '<p class="dlv-hint">كل المحافظات تظهر للعميل. المفتوحة فقط يمكن اختيارها، والمغلقة تظهر معطّلة مع كلمة "قريباً". ' +
+      'لفتح محافظة: أضف مناطقها أولاً ثم فعّلها. المحافظة الافتراضية لا يمكن إغلاقها.</p>' +
+      '<div class="dlv-tw"><table><thead><tr><th>المحافظة</th><th>المناطق</th><th>الحالة</th>' + (canEdit ? '<th></th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    focusForm('gov');
   }
 
   function slotRowView(s, i, n) {
@@ -243,13 +298,21 @@
       '</tr>';
   }
   function renderAreas() {
-    var box = $('.dlv-areas'), n = S.areas.length;
-    var active = S.areas.filter(function (a) { return a.is_active; }).length;
-    var rows = S.areas.map(function (a, i) { return edit.area === a.id ? areaRowEdit(a) : areaRowView(a, i, n); }).join('');
+    var list = govAreas(), box = $('.dlv-areas'), n = list.length;
+    var active = list.filter(function (a) { return a.is_active; }).length;
+    var rows = list.map(function (a, i) { return edit.area === a.id ? areaRowEdit(a) : areaRowView(a, i, n); }).join('');
     if (edit.area === 'new') rows += areaRowEdit(null);
+    var g = S.govs.find(function (x) { return x.id === S.gov; });
+    var picker = S.govs.length
+      ? '<label>المحافظة<select data-act="gov-pick" data-keep="1">' + S.govs.map(function (x) {
+          return '<option value="' + x.id + '"' + (x.id === S.gov ? ' selected' : '') + '>' + esc(x.name_ar) + (x.is_active ? '' : ' (مغلقة)') + '</option>';
+        }).join('') + '</select></label>' : '';
+    var closedNote = g && !g.is_active
+      ? '<div class="dlv-ro">هذه المحافظة مغلقة، فلا تظهر مناطقها للعملاء حتى تفعّل المحافظة من الجدول أعلاه.</div>' : '';
     box.innerHTML =
-      '<div class="dlv-head"><h3>مناطق بغداد <span class="dlv-hint">(' + '<span class="ltr">' + active + '</span> فعّالة من <span class="ltr">' + n + '</span>)</span></h3>' +
+      '<div class="dlv-head"><h3>مناطق ' + esc(g ? g.name_ar : 'بغداد') + ' <span class="dlv-hint">(' + '<span class="ltr">' + active + '</span> فعّالة من <span class="ltr">' + n + '</span>)</span></h3>' +
       (canEdit ? '<button class="pri" data-act="area-add"' + (edit.area ? ' disabled' : '') + '>+ منطقة</button>' : '') + '</div>' +
+      picker + closedNote +
       '<p class="dlv-hint">قائمة المناطق التي يختار منها العميل. المنطقة المتوقفة لا تظهر ولا يقبلها السيرفر. الطلبات القديمة تحتفظ باسم المنطقة حتى لو حُذفت.</p>' +
       (canEdit ? '<details><summary>إضافة عدة مناطق دفعة واحدة</summary>' +
         '<textarea class="bulk" placeholder="منطقة في كل سطر، مثلاً:&#10;المنصور&#10;الكرادة&#10;زيونة"></textarea>' +
@@ -303,7 +366,7 @@
       id: tr.dataset.id,
       name_ar: tr.querySelector('.f-name').value.trim(),
       name_en: tr.querySelector('.f-name-en').value.trim() || null,
-      is_active: tr.querySelector('.f-active').checked
+      is_active: tr.querySelector('.f-active') ? tr.querySelector('.f-active').checked : true
     };
     if (kind === 'slot') { v.start = tr.querySelector('.f-start').value; v.end = tr.querySelector('.f-end').value; }
     return v;
@@ -326,7 +389,7 @@
     if (!v.name_ar) return msg('اكتب اسم المنطقة.', true);
     var row = { name_ar: v.name_ar, name_en: v.name_en, is_active: v.is_active };
     run(function () {
-      if (v.id === 'new') { row.sort_order = nextSort(S.areas); return sb.from('delivery_areas').insert(row); }
+      if (v.id === 'new') { row.sort_order = nextSort(govAreas()); if (S.gov) row.governorate_id = S.gov; return sb.from('delivery_areas').insert(row); }
       return sb.from('delivery_areas').update(row).eq('id', v.id);
     }, v.id === 'new' ? 'أُضيفت المنطقة.' : 'حُفظت المنطقة.').then(function () {
       if (!root.querySelector('.dlv-msg.err')) { edit.area = null; renderAreas(); }
@@ -334,19 +397,42 @@
   }
   function bulkAreas() {
     var ta = $('.bulk'); if (!ta) return;
-    var have = {}; S.areas.forEach(function (a) { have[a.name_ar.trim().toLowerCase()] = 1; });
+    var have = {}; govAreas().forEach(function (a) { have[a.name_ar.trim().toLowerCase()] = 1; });
     var names = [], seen = {};
     ta.value.split(/\r?\n|،|,/).forEach(function (x) {
       var t = x.replace(/\s+/g, ' ').trim(), k = t.toLowerCase();
       if (t && !have[k] && !seen[k]) { seen[k] = 1; names.push(t.slice(0, 60)); }
     });
     if (!names.length) return msg('لا أسماء جديدة في القائمة.', true);
-    var base = nextSort(S.areas);
-    var rows = names.map(function (n, i) { return { name_ar: n, sort_order: base + i * 10, is_active: true }; });
+    var base = nextSort(govAreas());
+    var rows = names.map(function (n, i) {
+      var r = { name_ar: n, sort_order: base + i * 10, is_active: true };
+      if (S.gov) r.governorate_id = S.gov;
+      return r;
+    });
     run(function () { return sb.from('delivery_areas').insert(rows); },
       'أُضيفت ' + names.length + ' منطقة.').then(function () {
       if (!root.querySelector('.dlv-msg.err')) { var t = $('.bulk'); if (t) t.value = ''; }
     });
+  }
+  function saveGov() {
+    var v = formVals('gov');
+    if (!v.name_ar) return msg('اكتب اسم المحافظة.', true);
+    var row = { name_ar: v.name_ar, name_en: v.name_en };
+    run(function () {
+      if (v.id === 'new') { row.sort_order = nextSort(S.govs); row.is_active = false; return sb.from('delivery_governorates').insert(row); }
+      return sb.from('delivery_governorates').update(row).eq('id', v.id);
+    }, v.id === 'new' ? 'أُضيفت المحافظة (مغلقة حتى تفعّلها).' : 'حُفظت المحافظة.').then(function () {
+      if (!root.querySelector('.dlv-msg.err')) { edit.gov = null; renderGovs(); }
+    });
+  }
+  function toggleGov(id, on) {
+    var g = S.govs.find(function (x) { return x.id === id; });
+    if (on && g && !S.areas.some(function (a) { return a.governorate_id === id && a.is_active; })) {
+      if (!window.confirm('هذه المحافظة بلا مناطق فعّالة، وسيرى العميل قائمة مناطق فارغة.\nهل تريد فتحها رغم ذلك؟')) { renderGovs(); return; }
+    }
+    run(function () { return sb.from('delivery_governorates').update({ is_active: on }).eq('id', id); },
+      on ? 'فُتحت المحافظة للطلب.' : 'أُغلقت المحافظة. تظهر للعملاء كـ "قريباً".');
   }
   function saveSameDay() {
     var on = $('.sd-on').checked, cut = $('.sd-cut').value;
@@ -361,7 +447,9 @@
   }
   function del(table, list, id, kind) {
     var r = list.find(function (x) { return x.id === id; }); if (!r) return;
-    var txt = kind === 'slot'
+    var txt = kind === 'gov'
+      ? 'حذف المحافظة "' + r.name_ar + '"؟\nلا يمكن حذف محافظة فيها مناطق.'
+      : kind === 'slot'
       ? 'حذف الفترة "' + r.name_ar + '"؟\nالطلبات السابقة تحتفظ بنص الفترة. إن كنت تريد إخفاءها مؤقتاً فالأفضل إيقافها.'
       : 'حذف المنطقة "' + r.name_ar + '"؟\nالطلبات السابقة تحتفظ باسم المنطقة. إن كنت تريد إخفاءها مؤقتاً فالأفضل إيقافها.';
     if (!window.confirm(txt)) return;
@@ -383,18 +471,26 @@
       case 'slot-del': del('delivery_slots', S.slots, id, 'slot'); break;
       case 'slot-up': move('delivery_slots', S.slots, id, -1); break;
       case 'slot-down': move('delivery_slots', S.slots, id, 1); break;
+      case 'gov-add': edit.gov = 'new'; renderGovs(); break;
+      case 'gov-edit': edit.gov = id; renderGovs(); break;
+      case 'gov-cancel': edit.gov = null; msg(''); renderGovs(); break;
+      case 'gov-save': saveGov(); break;
+      case 'gov-del': del('delivery_governorates', S.govs, id, 'gov'); break;
       case 'area-add': edit.area = 'new'; renderAreas(); break;
       case 'area-edit': edit.area = id; renderAreas(); break;
       case 'area-cancel': edit.area = null; msg(''); renderAreas(); break;
       case 'area-save': saveArea(); break;
       case 'area-del': del('delivery_areas', S.areas, id, 'area'); break;
-      case 'area-up': move('delivery_areas', S.areas, id, -1); break;
-      case 'area-down': move('delivery_areas', S.areas, id, 1); break;
+      case 'area-up': move('delivery_areas', govAreas(), id, -1); break;
+      case 'area-down': move('delivery_areas', govAreas(), id, 1); break;
       case 'area-bulk': bulkAreas(); break;
     }
   }
   function onChange(e) {
-    var t = e.target; if (!t.dataset || !t.dataset.act || !canEdit) return;
+    var t = e.target; if (!t.dataset || !t.dataset.act) return;
+    if (t.dataset.act === 'gov-pick') { S.gov = t.value; edit.area = null; renderAreas(); return; }
+    if (!canEdit) return;
+    if (t.dataset.act === 'gov-active') toggleGov(t.dataset.id, t.checked);
     if (t.dataset.act === 'slot-active') toggleActive('delivery_slots', S.slots, t.dataset.id, t.checked);
     if (t.dataset.act === 'area-active') toggleActive('delivery_areas', S.areas, t.dataset.id, t.checked);
   }
@@ -402,7 +498,7 @@
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     var tr = e.target.closest('tr[data-form]'); if (!tr) return;
     e.preventDefault();
-    if (tr.dataset.form === 'slot') saveSlot(); else saveArea();
+    if (tr.dataset.form === 'slot') saveSlot(); else if (tr.dataset.form === 'gov') saveGov(); else saveArea();
   }
 
   window.QadahDelivery = {
@@ -415,7 +511,7 @@
         root.addEventListener('change', onChange);
         root.addEventListener('keydown', onKey);
       }
-      edit = { slot: null, area: null };
+      edit = { slot: null, area: null, gov: null };
       return refresh();
     },
     refresh: refresh
