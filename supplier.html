@@ -190,6 +190,61 @@
   .center-load{display:grid; place-items:center; padding:56px 0}
   .hidden{display:none !important}
   @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+  /* ---------- print buttons ---------- */
+  .printbar{display:flex; gap:10px; flex-wrap:wrap; margin:0 0 16px}
+  .printbar:empty{display:none}
+
+  /* ---------- print sheet (hidden on screen) ---------- */
+  #printArea{display:none}
+  @media print{
+    @page{size:A4; margin:10mm}
+    html,body{background:#fff !important; padding:0 !important}
+    #loginView,#resetView,#denyView,#appView{display:none !important}
+    #printArea{display:block; direction:rtl; color:#000; font-size:12pt}
+
+    .slip{
+      border:1.5px dashed #000; border-radius:8px; padding:12px 14px; margin:0 0 9mm;
+      break-inside:avoid; page-break-inside:avoid;
+    }
+    .slip-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+      border-bottom:1px solid #000; padding-bottom:6px; margin-bottom:10px}
+    .slip-brand{font-weight:800; font-size:16pt}
+    .slip-brand small{font-weight:500; font-size:9pt; letter-spacing:2px; margin-inline-start:6px}
+    .slip-title{font-weight:700; font-size:11pt}
+    .slip-code{
+      border:3px solid #000; border-radius:10px; text-align:center;
+      font-weight:800; font-size:34pt; line-height:1.15; padding:6px 10px; letter-spacing:2px;
+    }
+    .slip-when{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+      font-size:13pt; font-weight:700; margin:10px 2px 8px}
+    .slip-to{border:1.5px solid #000; border-radius:8px; padding:8px 12px; margin:0 0 10px}
+    .to-h{font-size:9pt; font-weight:700; letter-spacing:.5px; margin-bottom:2px}
+    .to-name{font-size:15pt; font-weight:800}
+    .to-phone{font-size:20pt; font-weight:800; letter-spacing:1px; margin:2px 0 4px; text-align:right}
+    .to-addr{font-size:12pt; line-height:1.5; margin-top:2px}
+    .to-mark{font-size:13pt; font-weight:800; margin-top:5px; padding:4px 8px; border:1.5px dashed #000; border-radius:6px}
+    .to-surprise{margin-top:6px; padding:4px 8px; background:#000; color:#fff; font-size:12pt; font-weight:800; text-align:center; border-radius:6px; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+    .slip-warn{border:2px solid #000; padding:8px 12px; margin:0 0 10px; font-weight:800; font-size:12pt; text-align:center}
+    .slip table{width:100%; border-collapse:collapse; margin-bottom:6px}
+    .slip th{font-size:10pt; text-align:right; border-bottom:1.5px solid #000; padding:4px 6px}
+    .slip td{padding:7px 6px; border-bottom:1px solid #999; font-size:13pt; vertical-align:middle}
+    .slip td.ck{width:28px}
+    .slip td.q{width:70px; text-align:center; font-weight:800; font-size:15pt}
+    .slip th.q{text-align:center}
+    .box{display:inline-block; width:16px; height:16px; border:2px solid #000; border-radius:3px}
+    .slip-total{font-weight:700; font-size:11pt; margin:4px 2px 12px}
+    .slip-sign{display:flex; gap:18px; font-size:10pt; margin-bottom:12px}
+    .slip-sign span{flex:1; border-top:1px solid #000; padding-top:4px}
+    .cut{font-size:9pt; text-align:center; border-top:1.5px dashed #000; padding-top:5px; margin-bottom:6px}
+    .sticker{
+      border:2px solid #000; border-radius:8px; padding:6px 10px;
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    .sticker b{font-size:20pt; letter-spacing:1px}
+    .sticker span{font-size:11pt; font-weight:700; text-align:left}
+    .stamp{font-size:8pt; color:#444; text-align:left; margin-top:6px}
+  }
 </style>
 </head>
 <body>
@@ -275,9 +330,13 @@
 
   <main>
     <div class="summary" id="summary"></div>
+    <div class="printbar" id="printBar"></div>
     <div id="list"></div>
   </main>
 </div>
+
+<!-- print sheet: filled by JS right before window.print(), shown only when printing -->
+<div id="printArea" dir="rtl"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -404,6 +463,11 @@ async function loadLines(manual){
       '<div>حدث خطأ في الاتصال. جرّب زر التحديث بعد قليل.</div></div>';
     return;
   }
+  // delivery details (recipient, phone, address, landmark) are only used on the print slip
+  const dres = await sb.from("supplier_order_delivery").select("*");
+  DELIVERY_OK = !dres.error;
+  DELIVERY = new Map((dres.data || []).map(r => [r.order_id, r]));
+
   render(data || []);
   stampUpdated();
 }
@@ -426,6 +490,8 @@ function render(rows){
     map.get(r.order_id).lines.push(r);
   }
   const orders = [...map.values()];
+  ORDERS = orders;
+  renderPrintBar();
 
   // summary: orders that are mine, + my lines still awaiting an action from me
   const myActionable = rows.filter(r => ["pending","confirmed","prepared"].includes(r.supplier_status)).length;
@@ -472,6 +538,9 @@ function renderOrder(o){
       '<div class="order-head">'+
         '<span class="order-code">'+escapeHtml(h.order_code || "")+'</span>'+
         '<span class="spacer"></span>'+
+        (isPrintable(o)
+          ? '<button class="btn ghost small" onclick="printOrders([\''+h.order_id+'\'])">🖨 طباعة</button>'
+          : '')+
         '<span class="obadge '+orderBadgeClass(h.order_status)+'">'+
           (ORDER_STATUS_AR[h.order_status] || h.order_status)+'</span>'+
         '<div class="delivery">'+delivery+'</div>'+
@@ -524,6 +593,138 @@ function renderLine(l, locked){
     '</div>'
   );
 }
+
+/* ============================================================
+   PRINT (delivery slip: supplier-safe fields only, no customer data)
+   ============================================================ */
+let ORDERS = [];   // grouped orders from the last load, used by the print buttons
+let DELIVERY = new Map();   // order_id -> recipient / address row (view supplier_order_delivery)
+let DELIVERY_OK = false;    // false when the view could not be read (SQL not run yet)
+
+const liveLines   = o => o.lines.filter(l => l.supplier_status !== "unavailable");
+const isPrintable = o => !LOCKED.includes(o.head.order_status) && liveLines(o).length > 0;
+// ready for the driver: every available line is prepared but not yet handed over
+const isReady     = o => { const ls = liveLines(o); return isPrintable(o) && ls.length>0 && ls.every(l => l.supplier_status === "prepared"); };
+// still on my table: at least one line not yet handed to the driver
+const isOpenOrder = o => isPrintable(o) && liveLines(o).some(l => ["pending","confirmed","prepared"].includes(l.supplier_status));
+
+function renderPrintBar(){
+  const ready = ORDERS.filter(isReady).length;
+  const open  = ORDERS.filter(isOpenOrder).length;
+  el("printBar").innerHTML = open
+    ? '<button class="btn ghost small" '+(ready?'':'disabled ')+'onclick="printOrders(\'ready\')">🖨 طباعة الجاهز للتسليم ('+ready+')</button>'+
+      '<button class="btn ghost small" onclick="printOrders(\'open\')">🖨 طباعة كل الطلبات الجارية ('+open+')</button>'
+    : '';
+}
+
+function fmtDate(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? m[3]+"/"+m[2]+"/"+m[1] : "";
+}
+function weekdayAr(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return "";
+  try { return new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString("ar", { weekday:"long" }); }
+  catch(e){ return ""; }
+}
+
+// keep time ranges like 08:00-10:00 left-to-right inside Arabic text
+function fmtSlot(t){
+  return escapeHtml(t || "").replace(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g,
+    '<bdi dir="ltr">$1-$2</bdi>');
+}
+
+// recipient block for the driver: name, phone, address, nearest landmark, notes, surprise flag
+function recipientHtml(orderId){
+  const d = DELIVERY.get(orderId);
+  if (!d) return '<div class="slip-warn">بيانات المستلم والعنوان غير متاحة. راجع الإدارة قبل التسليم.</div>';
+
+  // the checkout also writes the landmark inside the address text; show it once, as its own line
+  let landmark = String(d.delivery_landmark || "").trim();
+  const keep = [];
+  for (const ln of String(d.delivery_address || "").split(/\r?\n/)){
+    const m = /^\s*أقرب نقطة دالة\s*[:：]\s*(.*)$/.exec(ln);
+    if (m){ if (!landmark) landmark = m[1].trim(); }
+    else if (ln.trim()) keep.push(ln.trim());
+  }
+  const addr = keep.join("، ");
+  const place = [d.delivery_governorate, d.delivery_area].filter(Boolean).join("، ");
+  const placeInAddr = d.delivery_area ? addr.includes(d.delivery_area) : addr.includes(place);
+  const addrLine = [place && !placeInAddr ? place : "", addr].filter(Boolean).join("، ");
+
+  return (
+    '<div class="slip-to">'+
+      '<div class="to-h">المستلم</div>'+
+      '<div class="to-name">' + escapeHtml(d.recipient_name || "—") + '</div>'+
+      '<div class="to-phone"><bdi dir="ltr">' + escapeHtml(d.recipient_phone || "—") + '</bdi></div>'+
+      (addrLine ? '<div class="to-addr"><b>العنوان:</b> ' + escapeHtml(addrLine) + '</div>' : '')+
+      (landmark ? '<div class="to-mark">أقرب نقطة دالة: ' + escapeHtml(landmark) + '</div>' : '')+
+      (d.delivery_notes && String(d.delivery_notes).trim()
+        ? '<div class="to-addr"><b>ملاحظات:</b> ' + escapeHtml(String(d.delivery_notes).trim()) + '</div>' : '')+
+      (d.is_surprise ? '<div class="to-surprise">مفاجأة: لا تتصلوا بالمستلم قبل الوصول</div>' : '')+
+    '</div>'
+  );
+}
+
+function slipHtml(o, stamp){
+  const h = o.head;
+  const lines = liveLines(o);
+  const pieces = lines.reduce((s,l) => s + (l.quantity ?? 1), 0);
+  const d = fmtDate(h.delivery_date);
+  const when = d
+    ? weekdayAr(h.delivery_date) + ' <bdi dir="ltr">' + d + '</bdi>'
+    : 'غير محدّد';
+  const slot = h.delivery_slot ? '<bdi>' + fmtSlot(h.delivery_slot) + '</bdi>' : '';
+  const code = '<bdi dir="ltr">' + escapeHtml(h.order_code || "") + '</bdi>';
+
+  const rows = lines.map(l =>
+    '<tr><td class="ck"><span class="box"></span></td>'+
+    '<td>' + escapeHtml(l.product_name || "") + '</td>'+
+    '<td class="q">' + (l.quantity ?? 1) + '</td></tr>'
+  ).join("");
+
+  return (
+    '<div class="slip">'+
+      '<div class="slip-top">'+
+        '<span class="slip-brand">قدّاح<small>QADAH</small></span>'+
+        '<span class="slip-title">ورقة تسليم الطلب</span>'+
+      '</div>'+
+      '<div class="slip-code">' + code + '</div>'+
+      '<div class="slip-when"><span>التسليم: ' + when + '</span>' + (slot ? '<span>' + slot + '</span>' : '') + '</div>'+
+      recipientHtml(h.order_id)+
+      '<table><thead><tr><th></th><th>الصنف</th><th class="q">الكمية</th></tr></thead><tbody>' + rows + '</tbody></table>'+
+      '<div class="slip-total">عدد القطع: ' + pieces + '</div>'+
+      '<div class="slip-sign"><span>اسم السائق</span><span>التوقيع</span></div>'+
+      '<div class="cut">✂ قصّ والصق على غلاف الطلب</div>'+
+      '<div class="sticker"><b>' + code + '</b><span>' + (d ? '<bdi dir="ltr">' + d + '</bdi>' : '') + (slot ? '<br>' + slot : '') + '</span></div>'+
+      '<div class="stamp">طُبعت ' + stamp + '</div>'+
+    '</div>'
+  );
+}
+
+// ids: an array of order ids, or "ready" / "open"
+function printOrders(ids){
+  let list;
+  if (ids === "ready")      list = ORDERS.filter(isReady);
+  else if (ids === "open")  list = ORDERS.filter(isOpenOrder);
+  else                      list = ORDERS.filter(o => ids.includes(o.head.order_id) && isPrintable(o));
+  if (!list.length){ alert("لا توجد طلبات للطباعة."); return; }
+
+  // driver gets them in delivery order: date, then slot, then order code
+  list = list.slice().sort((a,b) =>
+    String(a.head.delivery_date || "9999").localeCompare(String(b.head.delivery_date || "9999")) ||
+    String(a.head.delivery_slot || "").localeCompare(String(b.head.delivery_slot || "")) ||
+    String(a.head.order_code || "").localeCompare(String(b.head.order_code || "")));
+
+  const t = new Date(), p = n => String(n).padStart(2,"0");
+  const stamp = '<bdi dir="ltr">' + p(t.getDate()) + "/" + p(t.getMonth()+1) + "/" + t.getFullYear() +
+                " " + p(t.getHours()) + ":" + p(t.getMinutes()) + '</bdi>';
+
+  el("printArea").innerHTML = list.map(o => slipHtml(o, stamp)).join("");
+  // let the browser lay the sheet out before opening the print dialog
+  requestAnimationFrame(()=> setTimeout(()=> window.print(), 50));
+}
+window.addEventListener("afterprint", ()=>{ el("printArea").innerHTML = ""; });
 
 /* ============================================================
    ACTIONS (write via confirm_order_line only)
