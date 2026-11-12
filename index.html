@@ -336,11 +336,16 @@
 
 <!-- USERS MANAGEMENT (المدير فقط) -->
 <section id="tab-users" class="hidden">
-  <div style="padding:16px 24px 6px"><h2 style="font-size:20px;color:var(--accent)">إدارة المستخدمين والأدوار</h2>
-    <p style="color:var(--ink-soft);font-size:14px">غيّر دور أي مستخدم مباشرة. لتحويل شخص إلى مورد، استخدم صندوق ربط الحساب في قسم الموردون.</p></div>
+  <div style="padding:16px 24px 6px"><h2 style="font-size:20px;color:var(--accent)">إدارة الموظفين والأدوار</h2>
+    <p style="color:var(--ink-soft);font-size:14px">هنا الموظفون فقط، الزبائن لا يظهرون في هذه القائمة. أنشئ الحساب أولاً من Authentication ثم أضفه هنا. لتحويل شخص إلى مورد، استخدم صندوق ربط الحساب في قسم الموردون.</p></div>
   <div class="toolbar">
     <div class="search"><input id="usrSearch" type="text" placeholder="ابحث بالبريد..." oninput="renderUsers()"></div>
     <button class="btn btn-ghost" onclick="fetchUsers().then(renderUsers)">↻ تحديث</button>
+  </div>
+  <div class="toolbar" style="gap:8px;flex-wrap:wrap">
+    <input id="stfEmail" type="email" dir="ltr" placeholder="بريد الموظف (الحساب موجود في Authentication)" style="min-width:260px">
+    <select id="stfRole"><option value="viewer">مشاهدة</option><option value="editor">مسؤول أسعار</option><option value="admin">مدير</option></select>
+    <button class="btn btn-primary" onclick="addStaff()">+ إضافة موظف</button>
   </div>
   <div class="tablewrap" id="usrTable"></div>
 </section>
@@ -677,7 +682,12 @@ async function onSignedIn(){
   const {data:{user}}=await sb.auth.getUser();
   USERID=user.id;
   let {data:prof}=await sb.from('profiles').select('role,email').eq('id',user.id).single();
-  ROLE=prof?prof.role:'viewer';
+  if(!prof||!['admin','editor','viewer','supplier'].includes(prof.role)){
+    await sb.auth.signOut();
+    setMsg('هذا الحساب ليس حساب موظف في لوحة التحكم.');
+    return;
+  }
+  ROLE=prof.role;
   USERNAME=((prof&&prof.email?prof.email:user.email)||'').split('@')[0];
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -1114,7 +1124,7 @@ function renderUsers(){
   const box=document.getElementById('usrTable'); if(!box)return;
   const q=document.getElementById('usrSearch').value.trim().toLowerCase();
   const list=users.filter(u=>!q||(u.email||'').toLowerCase().includes(q));
-  if(!list.length){box.innerHTML='<div class="empty">لا مستخدمين.</div>';return;}
+  if(!list.length){box.innerHTML='<div class="empty">لا موظفين.</div>';return;}
   const adminCount=users.filter(u=>u.role==='admin').length;
   box.innerHTML=`<table class="data"><thead><tr>
     <th>البريد</th><th>الدور الحالي</th><th>تغيير الدور</th></tr></thead><tbody>
@@ -1132,6 +1142,14 @@ function renderUsers(){
         </td></tr>`;
     }).join('')}
     </tbody></table>`;
+}
+async function addStaff(){
+  const email=stfEmail.value.trim().toLowerCase(), role=stfRole.value;
+  if(!email){toast('اكتب البريد');return;}
+  if(!confirm(`إضافة ${email} كـ "${ROLE_AR[role]}"؟`))return;
+  const {error}=await sb.rpc('add_staff',{p_email:email,p_role:role});
+  if(error){toast(/confirmed account/.test(error.message)?'لا يوجد حساب مؤكد بهذا البريد':error.message);return;}
+  stfEmail.value='';await fetchUsers();renderUsers();toast('تمت إضافة الموظف');
 }
 async function changeRole(id,email,newRole,isMe,adminCount){
   const u=users.find(x=>x.id===id); if(!u||u.role===newRole)return;
@@ -1757,15 +1775,13 @@ async function saveSupplier(){
   let linkEmail=(ROLE==='admin')?s_owner.value.trim().toLowerCase():'';
   let ownerId=null;
   if(linkEmail){
-    const {data:pr}=await sb.from('profiles').select('id,role').eq('email',linkEmail).maybeSingle();
-    if(!pr){toast('لا يوجد حساب بهذا البريد. أنشئه أولاً من Authentication.');return;}
-    ownerId=pr.id; payload.owner_id=ownerId;
+    const {data:uid,error:le}=await sb.rpc('add_staff',{p_email:linkEmail,p_role:'supplier'});
+    if(le||!uid){toast(le&&/confirmed account/.test(le.message)?'لا يوجد حساب مؤكد بهذا البريد. أنشئه أولاً من Authentication.':(le?le.message:'تعذّر ربط الحساب'));return;}
+    ownerId=uid; payload.owner_id=ownerId;
   }
   let supId=s_id.value;
   const {error}=supId?await sb.from('suppliers').update(payload).eq('id',supId):await sb.from('suppliers').insert(payload).select().single().then(r=>{if(r.data)supId=r.data.id;return r;});
   if(error){toast(error.message);return;}
-  if(ownerId){const {error:e2}=await sb.from('profiles').update({role:'supplier'}).eq('id',ownerId);
-    if(e2)toast('حُفظ المورد، لكن تعذّر ضبط الدور: '+e2.message);}
   close_('supModal');await fetchSuppliers();renderSuppliers();toast(linkEmail?'تم الحفظ وربط الحساب':'تم الحفظ');
 }
 async function removeSupplier(id){
