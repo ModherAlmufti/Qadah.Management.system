@@ -243,6 +243,7 @@
       <option value="price-desc">السعر: من الأعلى</option><option value="name">الاسم أبجدياً</option></select>
     <button class="btn btn-ghost hidden" id="btnOrder" onclick="openDisplayOrder()">⇅ ترتيب العرض</button>
     <button class="btn btn-ghost hidden" id="btnColors" onclick="openColorsList()">🎨 قائمة الألوان</button>
+    <button class="btn btn-ghost hidden" id="btnCats" onclick="openCatsManager()">📂 إدارة الأنواع</button>
     <button class="btn btn-ghost" id="btnBulk" onclick="openBulk()">↕ تعديل الأسعار</button>
     <button class="btn btn-gold" onclick="openCatalog()">📖 كتالوج</button>
     <button class="btn btn-green" onclick="exportProductsCSV()">⤓ تصدير</button>
@@ -542,6 +543,7 @@
 <script src="delivery.js"></script>
 <script src="pricing.js"></script>
 <script src="display.js"></script>
+<script src="categories.js"></script>
 <script src="imgedit.js"></script>
 <script>
 /* ============================================================
@@ -550,7 +552,7 @@
 const SUPABASE_URL="https://tsqkqoibfxachknfmzjj.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_JyCAQnMnltVq9nESIZjNew_St2FI6Ch";
 
-const CATS=['ورد','زنابق','عباد الشمس','أنثوريوم','أقحوان','صناديق','منوعات','مناسبات كبيرة'];
+let CATS=['ورد','زنابق','عباد الشمس','أنثوريوم','أقحوان','صناديق','منوعات','مناسبات كبيرة'];
 const PLACEHOLDER='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="86"><rect width="100" height="86" fill="#ddd6c6"/><text x="50" y="52" font-size="30" text-anchor="middle" fill="#9a9080">✿</text></svg>');
 
 /* ===== حالات الطلب: القيمة إنجليزية في القاعدة، الترجمة هنا فقط ===== */
@@ -590,7 +592,26 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function setMsg(t,ok){const m=document.getElementById('lg_msg');m.textContent=t;m.className='login-msg '+(ok?'ok':'err');}
 function close_(id){document.getElementById(id).classList.remove('show');}
-function fillSelect(sel,withAll){sel.innerHTML=(withAll?'<option value="">كل الأنواع</option>':'')+CATS.map(c=>`<option>${c}</option>`).join('');}
+/* الانواع تُدار من جدول product_categories (categories.js)؛ CATS احتياط فقط */
+function fillSelect(sel,withAll,current){
+  const keep=current!==undefined?current:sel.value;
+  const opts=window.QadahCategories?QadahCategories.options({withHidden:withAll,current:keep}):CATS.map(c=>({value:c,label:c}));
+  sel.innerHTML=(withAll?'<option value="">كل الأنواع</option>':'')+opts.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+  sel.value=keep; if(sel.selectedIndex<0)sel.selectedIndex=0;
+}
+const defaultCat=()=>window.QadahCategories?QadahCategories.defaultName():CATS[0];
+function refillCats(){
+  ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
+  fillSelect(document.getElementById('p_cat'),false);
+}
+async function loadCats(){
+  if(!window.QadahCategories)return;
+  try{await QadahCategories.load(sb);}catch(e){console.warn('categories load',e);}
+}
+function openCatsManager(){
+  if(!window.QadahCategories||ROLE!=='admin')return;
+  QadahCategories.openManager({sb,getProducts:()=>products,onSaved:async()=>{await fetchProducts();refillCats();renderProducts();}});
+}
 function fmtDateTime(iso){if(!iso)return '';const d=new Date(iso);if(isNaN(d))return '';
   return d.toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
 function fmtDate(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return esc(v);
@@ -671,6 +692,7 @@ async function onSignedIn(){
   document.getElementById('btnBulk').classList.toggle('hidden',!can.bulk());
   document.getElementById('btnOrder').classList.toggle('hidden',!(can.editPrice()&&window.QadahDisplay));
   document.getElementById('btnColors').classList.toggle('hidden',!(can.editPrice()&&window.QadahDisplay));
+  document.getElementById('btnCats').classList.toggle('hidden',!(ROLE==='admin'&&window.QadahCategories));
   document.getElementById('supAdd').classList.toggle('hidden',!can.manageSup());
   document.getElementById('supImport').classList.toggle('hidden',!can.manageSup());
   document.getElementById('tabUsersBtn').classList.toggle('hidden',ROLE!=='admin');
@@ -681,8 +703,7 @@ async function onSignedIn(){
   document.getElementById('tabPricingBtn').classList.toggle('hidden',!(can.editPrice()&&window.QadahPricing));
   document.getElementById('occAdd').classList.toggle('hidden',!can.addTag());
   document.getElementById('recAdd').classList.toggle('hidden',!can.addTag());
-  ['catFilter','b_cat','c_cat'].forEach(id=>fillSelect(document.getElementById(id),true));
-  fillSelect(document.getElementById('p_cat'),false);
+  await loadCats();refillCats();
   fillOrderStatusFilter();
   await Promise.all([fetchSuppliers(),fetchDrivers(),fetchProducts(),fetchOrders(),fetchTags()]);
   if(can.seeCost())await fetchCosts();
@@ -1220,7 +1241,7 @@ function openProduct(id){
     const p=products.find(x=>x.id===id);
     document.getElementById('prodTitle').textContent='تعديل صنف';
     p_id.value=p.id;p_nameAr.value=p.name_ar;p_nameEn.value=p.name_en||'';p_price.value=p.price;p_margin.value=p.margin;
-    p_cat.value=p.category||'ورد';p_note.value=p.note||'';
+    fillSelect(p_cat,false,p.category||defaultCat());p_note.value=p.note||'';
     pickSel={occasions:new Set(p.occasion_ids||[]),recipients:new Set(p.recipient_ids||[])};
     document.getElementById('p_badge').value=p.badge||'';
     document.getElementById('p_preview').src=p.image_url||PLACEHOLDER;
@@ -1234,7 +1255,7 @@ function openProduct(id){
     priceModalHadCost=(c.supplier_price!=null&&c.supplier_price>0);
   }else{
     document.getElementById('prodTitle').textContent='إضافة صنف';
-    p_id.value='';p_nameAr.value='';p_nameEn.value='';p_price.value='';p_margin.value='16';p_cat.value='ورد';
+    p_id.value='';p_nameAr.value='';p_nameEn.value='';p_price.value='';p_margin.value='16';fillSelect(p_cat,false,defaultCat());
     p_note.value='';document.getElementById('p_preview').src=PLACEHOLDER;
     pickSel={occasions:new Set(),recipients:new Set()};document.getElementById('p_badge').value='';
     ['p_avSup','p_avDel','p_photo'].forEach(k=>document.getElementById(k).value='');
