@@ -129,6 +129,26 @@
   .sbadge.prepared{background:rgba(1,24,58,.08); color:var(--navy)}
   .sbadge.picked_up{background:var(--navy); color:#fff}
 
+  /* full order detail on the card (recipient, sender, gift, delivery) */
+  .od{display:grid; gap:8px; padding:10px 16px 2px}
+  .od .blk{background:var(--rose-soft); border:1px solid var(--line); border-radius:12px; padding:9px 12px}
+  .od .blk h4{margin:0 0 5px; font-size:11px; font-weight:800; color:var(--muted); letter-spacing:.4px}
+  .od .row{font-size:14px; color:var(--ink); line-height:1.65}
+  .od .row b{font-weight:800; color:var(--navy)}
+  .od .ph{font-weight:800; font-size:15px; letter-spacing:.5px}
+  .od .gift{white-space:pre-wrap}
+  .od .warn{display:inline-block; margin-top:5px; padding:3px 9px; border-radius:8px;
+            background:var(--bad-soft); color:var(--bad); font-size:12px; font-weight:800}
+  .od .surprise{display:inline-block; margin-top:5px; padding:3px 9px; border-radius:8px;
+            background:var(--navy); color:#fff; font-size:12px; font-weight:800}
+
+  /* product thumbnail on each line */
+  .line .thumb{width:46px; height:46px; border-radius:10px; object-fit:cover; flex:0 0 auto;
+               border:1px solid var(--line); background:var(--rose-soft)}
+  .line .thumb-x{width:46px; height:46px; border-radius:10px; flex:0 0 auto;
+               border:1px solid var(--line); background:var(--rose-soft);
+               display:grid; place-items:center; color:var(--rose-strong); font-size:20px}
+
   /* action buttons per line */
   .act{
     border:1px solid var(--line); background:var(--card); color:var(--ink);
@@ -226,6 +246,10 @@
     .to-mark{font-size:13pt; font-weight:800; margin-top:5px; padding:4px 8px; border:1.5px dashed #000; border-radius:6px}
     .to-surprise{margin-top:6px; padding:4px 8px; background:#000; color:#fff; font-size:12pt; font-weight:800; text-align:center; border-radius:6px; -webkit-print-color-adjust:exact; print-color-adjust:exact}
     .slip-warn{border:2px solid #000; padding:8px 12px; margin:0 0 10px; font-weight:800; font-size:12pt; text-align:center}
+    .slip-gift{border:1.5px dashed #000; border-radius:8px; padding:8px 12px; margin:0 0 10px}
+    .slip-gift .g-msg{font-size:13pt; line-height:1.55; white-space:pre-wrap}
+    .slip-gift .g-sign{font-size:12pt; font-weight:800; margin-top:4px; text-align:left}
+    .slip-gift .g-anon{font-size:10pt; font-weight:800; margin-top:4px}
     .slip table{width:100%; border-collapse:collapse; margin-bottom:6px}
     .slip th{font-size:10pt; text-align:right; border-bottom:1.5px solid #000; padding:4px 6px}
     .slip td{padding:7px 6px; border-bottom:1px solid #999; font-size:13pt; vertical-align:middle}
@@ -545,10 +569,64 @@ function renderOrder(o){
           (ORDER_STATUS_AR[h.order_status] || h.order_status)+'</span>'+
         '<div class="delivery">'+delivery+'</div>'+
       '</div>'+
+      detailsHtml(h.order_id)+
       '<div class="lines">'+linesHtml+'</div>'+
       foot+
     '</div>'
   );
+}
+
+// full order detail for the card: delivery, recipient, sender, gift (from supplier_order_delivery)
+function detailsHtml(orderId){
+  const d = DELIVERY.get(orderId);
+  if (!d) return '';
+  const esc = escapeHtml;
+  const ph = v => '<bdi dir="ltr">'+esc(String(v || '—'))+'</bdi>';
+  const blocks = [];
+
+  // delivery — day · weekday date · slot
+  const dateTxt = fmtDate(d.delivery_date);
+  const deliv = [
+    d.delivery_day ? esc(String(d.delivery_day)) : '',
+    dateTxt ? esc(weekdayAr(d.delivery_date)) + ' <bdi dir="ltr">'+esc(dateTxt)+'</bdi>' : '',
+    d.delivery_slot ? esc(fmtSlot(d.delivery_slot)) : ''
+  ].filter(Boolean).join(' · ');
+  if (deliv) blocks.push('<div class="blk"><h4>التوصيل</h4><div class="row">'+deliv+'</div></div>');
+
+  // recipient
+  const place = [d.delivery_governorate, d.delivery_area].filter(Boolean).map(esc).join('، ');
+  const addr  = String(d.delivery_address || '').replace(/\r?\n/g, '، ').trim();
+  const mark  = String(d.delivery_landmark || '').trim();
+  const notes = String(d.delivery_notes || '').trim();
+  blocks.push('<div class="blk"><h4>المستلِم</h4>'+
+    '<div class="row"><b>'+esc(d.recipient_name || '—')+'</b> · <span class="ph">'+ph(d.recipient_phone)+'</span></div>'+
+    (place ? '<div class="row">'+place+'</div>' : '')+
+    (addr  ? '<div class="row">'+esc(addr)+'</div>' : '')+
+    (mark  ? '<div class="row">أقرب نقطة دالة: <b>'+esc(mark)+'</b></div>' : '')+
+    (notes ? '<div class="row">ملاحظات: '+esc(notes)+'</div>' : '')+
+    (d.is_surprise ? '<div class="surprise">مفاجأة: لا تتصلوا بالمستلم قبل الوصول</div>' : '')+
+  '</div>');
+
+  // sender — only when the widened view provides it
+  if ('sender_name' in d || 'is_anonymous' in d){
+    const sender = d.is_anonymous
+      ? '<div class="row">مُرسِل مجهول — لا تُظهر اسمه على البطاقة</div>'
+      : '<div class="row"><b>'+esc(d.sender_name || '—')+'</b> · <span class="ph">'+ph(d.sender_phone)+'</span></div>';
+    blocks.push('<div class="blk"><h4>المرسِل</h4>'+sender+'</div>');
+  }
+
+  // gift / card text
+  const msg  = String(d.gift_message || '').trim();
+  const sign = String(d.card_signature || '').trim();
+  if (msg || sign){
+    blocks.push('<div class="blk"><h4>الإهداء (نص البطاقة)</h4>'+
+      (msg  ? '<div class="row gift">'+esc(msg)+'</div>' : '')+
+      (sign ? '<div class="row">التوقيع: <b>'+esc(sign)+'</b></div>' : '')+
+      (d.is_anonymous ? '<div class="warn">الإهداء مجهول: لا تكتب اسم المرسِل على البطاقة</div>' : '')+
+    '</div>');
+  }
+
+  return '<div class="od">'+blocks.join('')+'</div>';
 }
 
 function bulkBtn(orderId, from, to, label){
@@ -584,8 +662,14 @@ function renderLine(l, locked){
     }
   }
 
+  const thumb = l.image_url
+    ? '<img class="thumb" src="'+escapeHtml(l.image_url)+'" alt="" loading="lazy" '+
+      'onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'thumb-x\',textContent:\'✿\'}))">'
+    : '<span class="thumb-x">✿</span>';
+
   return (
     '<div class="line">'+
+      thumb+
       '<span class="pname grow">'+escapeHtml(l.product_name || "")+'</span>'+
       '<span class="qty">×'+ (l.quantity ?? 1) +'</span>'+
       chip+
@@ -666,6 +750,23 @@ function recipientHtml(orderId){
   );
 }
 
+// gift-card text for the printed slip (supplier writes the card)
+function giftSlipHtml(orderId){
+  const d = DELIVERY.get(orderId);
+  if (!d) return '';
+  const msg  = String(d.gift_message || '').trim();
+  const sign = String(d.card_signature || '').trim();
+  if (!msg && !sign) return '';
+  return (
+    '<div class="slip-gift">'+
+      '<div class="to-h">بطاقة الإهداء</div>'+
+      (msg ? '<div class="g-msg">'+escapeHtml(msg)+'</div>' : '')+
+      (sign && !d.is_anonymous ? '<div class="g-sign">— '+escapeHtml(sign)+'</div>' : '')+
+      (d.is_anonymous ? '<div class="g-anon">(مجهول — لا تكتب اسم المرسِل)</div>' : '')+
+    '</div>'
+  );
+}
+
 function slipHtml(o, stamp){
   const h = o.head;
   const lines = liveLines(o);
@@ -692,6 +793,7 @@ function slipHtml(o, stamp){
       '<div class="slip-code">' + code + '</div>'+
       '<div class="slip-when"><span>التسليم: ' + when + '</span>' + (slot ? '<span>' + slot + '</span>' : '') + '</div>'+
       recipientHtml(h.order_id)+
+      giftSlipHtml(h.order_id)+
       '<table><thead><tr><th></th><th>الصنف</th><th class="q">الكمية</th></tr></thead><tbody>' + rows + '</tbody></table>'+
       '<div class="slip-total">عدد القطع: ' + pieces + '</div>'+
       '<div class="slip-sign"><span>اسم السائق</span><span>التوقيع</span></div>'+
